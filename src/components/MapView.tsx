@@ -6,14 +6,16 @@ import type { CityBounds, CityDef } from '../cities'
 import { DEFAULT_CITY } from '../cities'
 import { computeDistanceField } from '../lib/distanceField'
 import { formatDistance, haversineMetres } from '../lib/distance'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 import { STORE_TYPES, typeColor, typeLabel } from '../storeTypes'
-import type { RankedStore, StoreCollection, UserLocation } from '../types'
+import type { StoreCollection, UserLocation } from '../types'
 
 interface Props {
   city: CityDef
   stores: StoreCollection | null
   user: UserLocation | null
-  ranked: RankedStore[]
+  lang: Lang
   heatOpacity: number
   /** Ramp: cells at/below this distance (m) are full red */
   minDistance: number
@@ -52,6 +54,9 @@ const makeMapStyle = (): maplibregl.StyleSpecification => ({
       type: 'raster',
       tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       tileSize: 256,
+      // OSM tiles only go to z19; cap so MapLibre overzooms instead of
+      // requesting 404 tiles at higher zoom.
+      maxzoom: 19,
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     },
   },
@@ -65,13 +70,15 @@ const typeColorExpression = [
   '#7f8c8d',
 ] as unknown as maplibregl.ExpressionSpecification
 
-function popupHtml(name: string | null, shop: string, distance: number | null): string {
+function popupHtml(name: string | null, shop: string, distance: number | null, lang: Lang): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const label = typeLabel(shop, lang)
+  const title = name ?? t(lang, 'unnamed', { type: label.toLowerCase() })
   return `
     <div class="store-popup">
-      <strong>${esc(name ?? `(unnamed ${typeLabel(shop).toLowerCase()})`)}</strong>
-      <div><span class="type-badge" style="background:${typeColor(shop)}">${esc(typeLabel(shop))}</span></div>
-      ${distance != null ? `<div class="popup-distance">${formatDistance(distance)} from your address</div>` : ''}
+      <strong>${esc(title)}</strong>
+      <div><span class="type-badge" style="background:${typeColor(shop)}">${esc(label)}</span></div>
+      ${distance != null ? `<div class="popup-distance">${esc(t(lang, 'fromYourAddress', { d: formatDistance(distance, lang) }))}</div>` : ''}
     </div>`
 }
 
@@ -83,6 +90,7 @@ export default function MapView({
   city,
   stores,
   user,
+  lang,
   heatOpacity,
   minDistance,
   maxDistance,
@@ -94,8 +102,20 @@ export default function MapView({
   const mapRef = useRef<MlMap | null>(null)
   const userMarkerRef = useRef<Marker | null>(null)
   const userRef = useRef<UserLocation | null>(null)
+  const langRef = useRef<Lang>(lang)
+  const popupRef = useRef<Popup | null>(null)
   const [mapReady, setMapReady] = useState(false)
   userRef.current = user
+  // Read by the click handler bound once at map load, so popups follow the
+  // current language without rebinding the listener.
+  langRef.current = lang
+
+  // Open a single popup at a time — replacing any previous one — so clicks and
+  // results-panel selections don't accumulate stacked popups.
+  const showPopup = (map: MlMap, lng: number, lat: number, html: string) => {
+    popupRef.current?.remove()
+    popupRef.current = new Popup({ offset: 10 }).setLngLat([lng, lat]).setHTML(html).addTo(map)
+  }
 
   // Initialise the map once
   useEffect(() => {
@@ -107,6 +127,9 @@ export default function MapView({
       // navigation clip once the map is ready
       bounds: lngLatBounds(DEFAULT_CITY.bounds),
       fitBoundsOptions: { padding: 20 },
+      // OSM raster tiles don't carry useful Expires headers; skip the periodic
+      // re-fetch/re-decode of already-loaded tiles.
+      refreshExpiredTiles: false,
     })
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right')
     mapRef.current = map
@@ -163,10 +186,7 @@ export default function MapView({
         const [lng, lat] = (feature.geometry as Point).coordinates
         const u = userRef.current
         const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
-        new Popup({ offset: 10 })
-          .setLngLat([lng, lat])
-          .setHTML(popupHtml(feature.properties.name ?? null, feature.properties.shop, distance))
-          .addTo(map)
+        showPopup(map, lng, lat, popupHtml(feature.properties.name ?? null, feature.properties.shop, distance, langRef.current))
       })
 
       map.on('mouseenter', 'store-points', () => (map.getCanvas().style.cursor = 'pointer'))
@@ -227,14 +247,24 @@ export default function MapView({
   }, [stores, mapReady])
 
   // Recompute the distance-field overlay when filters or ramp bounds change.
-  // Debounced: the compute costs ~100-300 ms and range sliders fire
-  // continuously while dragging. Waits for the boundary fetch to settle
-  // (undefined) so the first render is already clipped; null = fetch failed,
-  // render unclipped.
+  // Only ramp-slider drags are debounced (they fire continuously and now only
+  // trigger a cheap recolor of the cached grid); city/filter/boundary changes
+  // apply immediately. Waits for the boundary fetch to settle (undefined) so
+  // the first render is already clipped; null = fetch failed, render unclipped.
+  const overlayDepsRef = useRef<{ stores: unknown; city: unknown; boundary: unknown }>({
+    stores: undefined,
+    city: undefined,
+    boundary: undefined,
+  })
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady || boundary === undefined) return
-    const timer = window.setTimeout(() => {
+
+    const prev = overlayDepsRef.current
+    const onlyRamp = prev.stores === stores && prev.city === city && prev.boundary === boundary
+    overlayDepsRef.current = { stores, city, boundary }
+
+    const render = () => {
       const source = map.getSource('distance-field') as maplibregl.ImageSource | undefined
       if (!source) return
       const coordinates = imageCoords(city.bounds)
@@ -244,8 +274,13 @@ export default function MapView({
       }
       const { dataUrl } = computeDistanceField(stores, city.bounds, minDistance, maxDistance, boundary)
       source.updateImage({ url: dataUrl, coordinates })
-    }, 250)
-    return () => window.clearTimeout(timer)
+    }
+
+    if (onlyRamp) {
+      const timer = window.setTimeout(render, 250)
+      return () => window.clearTimeout(timer)
+    }
+    render()
   }, [stores, city, minDistance, maxDistance, boundary, mapReady])
 
   // Boundary outline
@@ -260,7 +295,10 @@ export default function MapView({
     source.setData(data)
   }, [boundary, mapReady])
 
-  // User pin + camera
+  // User pin + camera. On a genuine address clear (prev user → null) reset to
+  // the city view; on a city switch the framing effect already reframes, so
+  // skip the redundant fitBounds when there was no user to begin with.
+  const prevUserRef = useRef<UserLocation | null>(null)
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
@@ -271,9 +309,10 @@ export default function MapView({
         .setLngLat([user.lng, user.lat])
         .addTo(map)
       map.flyTo({ center: [user.lng, user.lat], zoom: 14 })
-    } else {
+    } else if (prevUserRef.current) {
       map.fitBounds(lngLatBounds(city.bounds), { padding: 20 })
     }
+    prevUserRef.current = user
   }, [user, city, mapReady])
 
   // Distance-field opacity slider
@@ -293,10 +332,7 @@ export default function MapView({
       const u = userRef.current
       const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
       map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16) })
-      new Popup({ offset: 10 })
-        .setLngLat([lng, lat])
-        .setHTML(popupHtml(feature.properties.name, feature.properties.shop, distance))
-        .addTo(map)
+      showPopup(map, lng, lat, popupHtml(feature.properties.name, feature.properties.shop, distance, langRef.current))
     }
     onFocusHandled()
   }, [focusedStoreId, stores, mapReady, onFocusHandled])

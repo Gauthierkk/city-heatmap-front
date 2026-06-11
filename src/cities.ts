@@ -43,6 +43,19 @@ export const CITIES: CityDef[] = [
     storesFile: 'data/stores-nyc.geojson',
     boundaryFile: 'data/boundary-nyc.geojson',
   },
+  {
+    id: 'austin',
+    label: 'Austin',
+    // City of Austin admin boundary (OSM relation 113314); bbox = relation
+    // bounds rounded to 3dp. The bbox is ~2.4× the city's land area (the rest
+    // is unincorporated county), but the overlay is clipped to the boundary.
+    bounds: { minLat: 30.099, maxLat: 30.517, minLng: -97.937, maxLng: -97.561 },
+    osmRelation: 113314,
+    wikidata: 'Q16559',
+    countryCodes: 'us',
+    storesFile: 'data/stores-austin.geojson',
+    boundaryFile: 'data/boundary-austin.geojson',
+  },
 ]
 
 export const DEFAULT_CITY = CITIES[0]

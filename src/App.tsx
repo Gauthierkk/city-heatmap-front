@@ -1,14 +1,25 @@
 import type { MultiPolygon, Polygon } from 'geojson'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CITIES, DEFAULT_CITY, cityById } from './cities'
 import AddressSearch from './components/AddressSearch'
 import FilterBar from './components/FilterBar'
 import MapView from './components/MapView'
 import ResultsPanel from './components/ResultsPanel'
+import { type Lang, detectLang, locale, t, titleParts } from './i18n'
 import { haversineMetres } from './lib/distance'
 import { ALL_TAGS } from './storeTypes'
 import type { RankedStore, StoreCollection, UserLocation } from './types'
-import { HEAT_CUTOFF_M, HEAT_MIN_M } from './types'
+import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M } from './types'
+
+// True when two tag sets are equal — lets us no-op identical filter updates
+// (e.g. "Select all" when everything is already active) so the memoised
+// filtered collection and the distance-field overlay don't needlessly recompute.
+function sameTagSet(a: Set<string>, b: Set<string>): boolean {
+  if (a === b) return true
+  if (a.size !== b.size) return false
+  for (const tag of a) if (!b.has(tag)) return false
+  return true
+}
 
 // Accepts a bare geometry, Feature, or FeatureCollection boundary file
 function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
@@ -28,6 +39,7 @@ function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
 
 export default function App() {
   const [cityId, setCityId] = useState(DEFAULT_CITY.id)
+  const [lang, setLang] = useState<Lang>(detectLang)
   const [panelExpanded, setPanelExpanded] = useState(true)
   // Per-city caches: fetched once, kept across switches
   const [storesByCity, setStoresByCity] = useState<Record<string, StoreCollection>>({})
@@ -42,11 +54,19 @@ export default function App() {
   const [maxDistance, setMaxDistance] = useState(HEAT_CUTOFF_M)
   const [focusedStoreId, setFocusedStoreId] = useState<string | null>(null)
 
+  // Reflect the UI language on <html lang> for a11y / correct hyphenation.
+  useEffect(() => {
+    document.documentElement.lang = lang
+  }, [lang])
+
   const city = cityById(cityId)
   const stores = storesByCity[city.id] ?? null
   // undefined = still loading, null = unavailable (overlay renders unclipped)
   const boundary = city.id in boundaryByCity ? boundaryByCity[city.id] : undefined
 
+  // Static per-city fetch + session cache. This data-loading boundary is
+  // slated to move into a dedicated worker later; keep it self-contained so
+  // the swap stays local to these two effects.
   useEffect(() => {
     if (storesByCity[city.id]) return
     let cancelled = false
@@ -59,7 +79,8 @@ export default function App() {
         if (!cancelled) setStoresByCity((prev) => ({ ...prev, [city.id]: data }))
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(`Could not load store data: ${err.message}`)
+        // Store the raw message; the localized prefix is applied at render time.
+        if (!cancelled) setLoadError(err.message)
       })
     return () => {
       cancelled = true
@@ -94,6 +115,13 @@ export default function App() {
     setLoadError(null)
   }
 
+  // Stable identities so memoised panel children don't re-render on slider drags.
+  const handleTagsChange = useCallback((next: Set<string>) => {
+    setActiveTags((prev) => (sameTagSet(prev, next) ? prev : next))
+  }, [])
+  const clearUser = useCallback(() => setUser(null), [])
+  const handleFocusHandled = useCallback(() => setFocusedStoreId(null), [])
+
   const filteredStores = useMemo(() => {
     if (!stores) return null
     return {
@@ -123,23 +151,25 @@ export default function App() {
         city={city}
         stores={filteredStores}
         user={user}
-        ranked={ranked}
+        lang={lang}
         heatOpacity={heatOpacity}
         minDistance={minDistance}
         maxDistance={maxDistance}
         boundary={boundary}
         focusedStoreId={focusedStoreId}
-        onFocusHandled={() => setFocusedStoreId(null)}
+        onFocusHandled={handleFocusHandled}
       />
       <div className="panel">
         <h1 className="panel-title">
-          {/* selects size to their longest option; the hidden sizer span
-              shrinks the grid cell to the chosen label exactly */}
+          {/* The title template places the city <select> at its {city} slot:
+              English leads with the city, French trails it. The hidden sizer
+              span shrinks the select to the chosen label exactly. */}
+          {titleParts(lang)[0]}
           <span className="city-select-wrap">
             <select
               className="city-select"
               value={city.id}
-              aria-label="City"
+              aria-label={t(lang, 'cityAria')}
               onChange={(e) => switchCity(e.target.value)}
             >
               {CITIES.map((c) => (
@@ -151,12 +181,19 @@ export default function App() {
             <span className="city-select-sizer" aria-hidden="true">
               {city.label}
             </span>
-          </span>{' '}
-          Grocery Heatmap
+          </span>
+          {titleParts(lang)[1]}
+          <button
+            className="lang-toggle-btn"
+            onClick={() => setLang((l) => (l === 'en' ? 'fr' : 'en'))}
+            aria-label={t(lang, 'switchLang')}
+          >
+            {lang === 'en' ? 'FR' : 'EN'}
+          </button>
           <button
             className="panel-toggle-btn"
             onClick={() => setPanelExpanded((v) => !v)}
-            aria-label={panelExpanded ? 'Minimize panel' : 'Expand panel'}
+            aria-label={panelExpanded ? t(lang, 'minimizePanel') : t(lang, 'expandPanel')}
             aria-expanded={panelExpanded}
           >
             {panelExpanded ? '−' : '+'}
@@ -167,15 +204,16 @@ export default function App() {
             <AddressSearch
               key={city.id}
               city={city}
+              lang={lang}
               onSelect={setUser}
-              onClear={() => setUser(null)}
+              onClear={clearUser}
             />
-            {loadError && <p className="error">{loadError}</p>}
-            <FilterBar activeTags={activeTags} onChange={setActiveTags} />
+            {loadError && <p className="error">{t(lang, 'loadError', { msg: loadError })}</p>}
+            <FilterBar activeTags={activeTags} lang={lang} onChange={handleTagsChange} />
             <div className="heatmap-settings">
-              <h2>Heatmap settings</h2>
+              <h2>{t(lang, 'heatmapSettings')}</h2>
               <label className="opacity-control">
-                Red within: {minDistance} m
+                {t(lang, 'redWithin', { n: minDistance })}
                 <input
                   type="range"
                   min={10}
@@ -186,18 +224,18 @@ export default function App() {
                 />
               </label>
               <label className="opacity-control">
-                Blue beyond: {maxDistance} m
+                {t(lang, 'blueBeyond', { n: maxDistance })}
                 <input
                   type="range"
                   min={100}
-                  max={500}
+                  max={HEAT_RAMP_MAX_M}
                   step={50}
                   value={maxDistance}
                   onChange={(e) => setMaxDistance(Number(e.target.value))}
                 />
               </label>
               <label className="opacity-control">
-                Opacity: {Math.round(heatOpacity * 100)}%
+                {t(lang, 'opacity', { n: Math.round(heatOpacity * 100) })}
                 <input
                   type="range"
                   min={0}
@@ -207,11 +245,10 @@ export default function App() {
                 />
               </label>
             </div>
-            {user && <ResultsPanel ranked={ranked} onSelect={setFocusedStoreId} />}
+            {user && <ResultsPanel ranked={ranked} lang={lang} onSelect={setFocusedStoreId} />}
             {!user && stores && (
               <p className="hint">
-                Enter your address to see your closest stores
-                ({stores.features.length.toLocaleString()} stores loaded).
+                {t(lang, 'hint', { n: stores.features.length.toLocaleString(locale(lang)) })}
               </p>
             )}
           </>

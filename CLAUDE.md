@@ -1,8 +1,9 @@
 # Grocery Heatmap
 
-React + MapLibre web app showing grocery stores in Paris and New York City
-with an always-on distance-to-nearest-store overlay and per-address closest
-stores. Spec: [docs/PRD.md](docs/PRD.md); resolved open questions:
+React + MapLibre web app showing grocery stores in Paris, New York City, and
+Austin TX with an always-on distance-to-nearest-store overlay and per-address
+closest stores. Fully localised in English and French (see i18n below). Spec:
+[docs/PRD.md](docs/PRD.md); resolved open questions:
 [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Commands
@@ -14,7 +15,13 @@ stores. Spec: [docs/PRD.md](docs/PRD.md); resolved open questions:
   `npm run fetch-stores -- nyc`). Intended to run weekly; commit the result.
 - `npm run fetch-boundary [-- <city>]` — refresh
   `public/data/boundary-<city>.geojson` (city admin boundary; Paris relation
-  71525, NYC relation 175905 with per-borough fallback; rarely changes)
+  71525, NYC relation 175905 with per-borough fallback, Austin relation
+  113314; rarely changes)
+
+Valid `<city>` ids: `paris`, `nyc`, `austin`. Both fetch scripts write
+compact GeoJSON with no `generated` timestamp (so weekly re-runs don't churn
+the committed files); `fetch-stores.mjs` refuses to overwrite if Overpass
+returns < 100 stores (a partial/empty result must not clobber good data).
 
 ## Architecture
 
@@ -37,25 +44,39 @@ stores. Spec: [docs/PRD.md](docs/PRD.md); resolved open questions:
   150 ms). Constraints are lifted momentarily before each re-fit so the new
   framing doesn't fight the old clip.
 - Store data is pre-baked GeoJSON in `public/data/stores-<city>.geojson`,
-  fetched at runtime from the app's own origin (decision #2).
-  `scripts/fetch-stores.mjs` queries Overpass by the city's wikidata area id
-  (Paris Q90, NYC Q60).
+  fetched at runtime from the app's own origin (decision #2). The fetch +
+  session cache lives in two self-contained effects in `App.tsx`; this
+  data-loading boundary is slated to move into a dedicated worker later, so
+  keep it isolated. `scripts/fetch-stores.mjs` queries Overpass by the city's
+  wikidata area id (Paris Q90, NYC Q60, Austin Q16559).
 - OSM tag quirks handled in the fetch script: fishmongers are `shop=seafood`,
   organic stores are any shop with `organic=only`; both are normalised to the
-  PRD's category names (`fishmonger`, `organic`) so the app only sees the 12
-  canonical types in `src/storeTypes.ts`.
+  PRD's category names (`fishmonger`, `organic`) so the app only sees the 18
+  canonical types in `src/storeTypes.ts`. The list was expanded from 12 (it
+  had been NYC-shaped) to 18 from Overpass counts across all three cities,
+  adding `pastry`, `wine`, `chocolate`, `confectionery`, `tea`, `coffee` —
+  each with ≥30 stores in at least one city (Paris drove pâtisserie /
+  chocolatier / cave à vins). `SHOP_TYPES` in `fetch-stores.mjs` must stay in
+  sync with the tags in `src/storeTypes.ts`.
 - Always-on distance-to-nearest-store overlay (decision #3, updated
   2026-06-11): a grid over the city bbox is coloured by proximity — red
   at/below a min distance → orange → yellow → green → cyan → blue at/beyond a
   max distance. Both bounds are user-configurable from the "Heatmap settings"
   panel (defaults 50 m / 500 m, `HEAT_MIN_M` / `HEAT_CUTOFF_M` in
   `src/types.ts`). Cell size is adaptive (decision #6): the smallest multiple
-  of 25 m that keeps the grid under ~200k cells — Paris 50 m, NYC 125 m.
-  Rendered synchronously in `src/lib/distanceField.ts` using a coarse 500 m
-  spatial bucket grid with ring-by-ring nearest-neighbour search; result is a
-  PNG data-URL fed into a MapLibre `image` / `raster` layer. Recomputes when
-  the city, active type filters, or ramp bounds change (debounced 250 ms for
-  slider drags).
+  of 25 m that keeps the grid under ~200k cells — Paris 50 m, NYC 125 m,
+  Austin 100 m. Rendered synchronously in `src/lib/distanceField.ts` using a
+  coarse 500 m spatial bucket grid with ring-by-ring nearest-neighbour search;
+  result is a PNG data-URL fed into a MapLibre `image` / `raster` layer.
+  Recomputes when the city or active type filters change; ramp-slider drags
+  are debounced 250 ms. Two hot-path optimisations: (1) the ring search is
+  seeded with `HEAT_RAMP_MAX_M`² (the slider ceiling), so cells whose nearest
+  store is beyond the ramp — blue regardless — bail after ~2 rings instead of
+  scanning the whole grid (big win for the water/exurb-heavy NYC and Austin
+  bboxes); (2) the per-cell nearest-store distances depend only on the store
+  set + bbox, so they're cached (`gridCache`, keyed by the filtered
+  FeatureCollection's reference) — moving a ramp slider only re-runs a cheap
+  colorize (via a precomputed colour LUT) + clip + encode, never the search.
 - The overlay is clipped to the city's administrative boundary
   (`public/data/boundary-<city>.geojson`, from `scripts/fetch-boundary.mjs`)
   via a `destination-in` composite fill on the same canvas; a thin
@@ -67,6 +88,18 @@ stores. Spec: [docs/PRD.md](docs/PRD.md); resolved open questions:
   radius interpolates with zoom (11 → 2 px, 14 → 5 px, 16 → 7 px).
 - State lives in `App.tsx`; `MapView` is the only component that touches the
   MapLibre instance (via refs + effects).
+- i18n: hand-rolled, no dependency (`src/i18n.ts`). Two locales (`en`/`fr`);
+  `t(lang, key, params?)` does `{slot}` interpolation, `titleParts(lang)`
+  splits the title around the city `<select>` (English leads with the city,
+  French trails it). `lang` is App state, defaults from `navigator.language`
+  (`detectLang`), is **never persisted** (consistent with the no-storage
+  stance), and is passed down as a prop; an effect mirrors it to
+  `document.documentElement.lang`. Store-type labels are per-language in
+  `STORE_TYPES` (`typeLabel(tag, lang)`); `formatDistance(m, lang)` uses the
+  locale's decimal separator. MapView popups read `lang` via a ref so the
+  once-bound click handler stays current. The panel children
+  (`AddressSearch`, `FilterBar`, `ResultsPanel`) are `React.memo`'d with
+  stable callbacks so ramp-slider drags don't re-render them.
 
 ## Gotchas
 

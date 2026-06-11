@@ -66,6 +66,28 @@ body,
   border-color: #aab6f5;
 }
 
+/* Language toggle: groups with the panel toggle at the right of the title */
+.lang-toggle-btn {
+  margin-left: auto;
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #ccc;
+  background: #f5f5f5;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: #444;
+}
+
+.lang-toggle-btn:hover {
+  background: #e8eeff;
+  border-color: #aab6f5;
+}
+
 /* City switcher: the city name inside the title is the dropdown, styled to
    read as heading text with a small chevron as the only affordance */
 .city-select-wrap {

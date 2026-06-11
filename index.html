@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Paris Grocery Heatmap</title>
+    <title>Grocery Heatmap</title>
+    <!-- Warm up the OSM tile connection before MapLibre boots -->
+    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+    <!-- Start the default city's data fetch in parallel with JS boot -->
+    <link rel="preload" href="data/stores-paris.geojson" as="fetch" />
+    <link rel="preload" href="data/boundary-paris.geojson" as="fetch" />
   </head>
   <body>
     <div id="root"></div>

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 const CITIES = {
   paris: { wikidata: 'Q90', timeout: 180 },
   nyc: { wikidata: 'Q60', timeout: 300 },
+  austin: { wikidata: 'Q16559', timeout: 240 },
 }
 
 const cityId = process.argv[2] ?? 'paris'
@@ -37,11 +38,17 @@ const SHOP_TYPES = [
   'butcher',
   'seafood',
   'bakery',
+  'pastry',
   'deli',
   'cheese',
   'frozen_food',
+  'wine',
   'alcohol',
   'beverages',
+  'chocolate',
+  'confectionery',
+  'tea',
+  'coffee',
 ]
 
 const query = `
@@ -100,15 +107,28 @@ function toGeoJSON(overpass) {
       },
     })
   }
+  // No `generated` timestamp: it would change on every weekly run and churn the
+  // committed file / git diff even when no stores actually changed.
   return {
     type: 'FeatureCollection',
-    generated: new Date().toISOString(),
     features,
   }
 }
 
 const data = await fetchOverpass()
 const geojson = toGeoJSON(data)
+
+// Guard against a partial/empty Overpass response clobbering good committed
+// data: even the sparsest city (Austin) has hundreds of stores, so a result
+// this small means the query failed, not that the city emptied out.
+const MIN_STORES = 100
+if (geojson.features.length < MIN_STORES) {
+  console.error(
+    `Refusing to write: only ${geojson.features.length} stores for ${cityId} ` +
+      `(< ${MIN_STORES}); the Overpass result looks partial or empty.`,
+  )
+  process.exit(1)
+}
 
 const counts = {}
 for (const f of geojson.features) counts[f.properties.shop] = (counts[f.properties.shop] ?? 0) + 1

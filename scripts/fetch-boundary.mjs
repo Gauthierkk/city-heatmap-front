@@ -30,6 +30,15 @@ const CITIES = {
     // If the big city relation is unavailable, assemble the five boroughs
     fallbackRelations: [2552485, 369518, 369519, 2552450, 962876],
   },
+  austin: {
+    relation: 113314, // wikidata Q16559
+    name: 'Austin',
+    // ~704 km² land (2020 census); the OSM polygon has ~56 inner holes
+    // (unincorporated enclaves) which areaKm2() subtracts
+    areaRange: [600, 1000],
+    // ~33 m tolerance: invisible at the overlay's 100 m cell resolution
+    toleranceDeg: 0.0003,
+  },
 }
 
 const cityId = process.argv[2] ?? 'paris'
@@ -251,7 +260,9 @@ if (area < minArea || area > maxArea) {
 
 const feature = {
   type: 'Feature',
-  properties: { name: city.name, osmRelation: city.relation, generated: new Date().toISOString() },
+  // No `generated` timestamp: boundaries change rarely, and omitting it keeps
+  // re-runs from churning the committed file.
+  properties: { name: city.name, osmRelation: city.relation },
   geometry: simplified,
 }
 

@@ -32,3 +32,8 @@ export interface RankedStore {
  *  City bounding boxes live in src/cities.ts. */
 export const HEAT_MIN_M = 50
 export const HEAT_CUTOFF_M = 500
+/** Ceiling of the "blue beyond" slider. The distance field caps its
+ *  nearest-store search here: any cell whose nearest store is farther is blue
+ *  for every allowed maxDistance, so its exact distance never needs computing.
+ *  Must stay ≥ the slider's max in App.tsx. */
+export const HEAT_RAMP_MAX_M = 500

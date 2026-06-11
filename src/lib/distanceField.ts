@@ -1,7 +1,7 @@
 import type { MultiPolygon, Polygon } from 'geojson'
 import type { CityBounds } from '../cities'
 import type { StoreCollection } from '../types'
-import { HEAT_CUTOFF_M, HEAT_MIN_M } from '../types'
+import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M } from '../types'
 
 // Adaptive cell size: smallest multiple of 25 m keeping the grid under
 // ~200k cells. Paris lands on 50 m; the much larger NYC bbox on 125 m.
@@ -28,18 +28,28 @@ const RAMP_COLORS: Array<[number, number, number]> = [
 ]
 const ALPHA = Math.round(0.45 * 255)
 
-function distanceToColor(d: number, minDist: number, maxDist: number): [number, number, number] {
-  const t = Math.min(Math.max((d - minDist) / (maxDist - minDist), 0), 1)
-  const pos = t * (RAMP_COLORS.length - 1)
-  const i = Math.min(Math.floor(pos), RAMP_COLORS.length - 2)
-  const f = pos - i
-  const lo = RAMP_COLORS[i], hi = RAMP_COLORS[i + 1]
-  return [
-    Math.round(lo[0] + f * (hi[0] - lo[0])),
-    Math.round(lo[1] + f * (hi[1] - lo[1])),
-    Math.round(lo[2] + f * (hi[2] - lo[2])),
-  ]
+// Colour lookup table: the ramp sampled into LUT_SIZE+1 RGB triples indexed by
+// the normalised distance t∈[0,1]. Built once per render instead of
+// interpolating + allocating a 3-tuple for every one of the ~70k–170k cells.
+const LUT_SIZE = 1024
+
+function buildColorLut(): Uint8ClampedArray {
+  const lut = new Uint8ClampedArray((LUT_SIZE + 1) * 3)
+  const segs = RAMP_COLORS.length - 1
+  for (let i = 0; i <= LUT_SIZE; i++) {
+    const pos = (i / LUT_SIZE) * segs
+    const si = Math.min(Math.floor(pos), segs - 1)
+    const f = pos - si
+    const lo = RAMP_COLORS[si], hi = RAMP_COLORS[si + 1]
+    const o = i * 3
+    lut[o]     = lo[0] + f * (hi[0] - lo[0])
+    lut[o + 1] = lo[1] + f * (hi[1] - lo[1])
+    lut[o + 2] = lo[2] + f * (hi[2] - lo[2])
+  }
+  return lut
 }
+
+const COLOR_LUT = buildColorLut()
 
 export interface DistanceFieldResult {
   dataUrl: string
@@ -52,27 +62,23 @@ export interface DistanceFieldResult {
  *  ~1 ring of buckets to search when the nearest store is within 500 m. */
 const BUCKET_M = 500
 
-/**
- * Compute a distance-to-nearest-store raster for a city bbox.
- *
- * Algorithm: stores are bucketed into a coarse grid (BUCKET_M × BUCKET_M).
- * For every output cell we search outward ring-by-ring from the cell's home
- * bucket, stopping as soon as the ring's minimum possible distance to any
- * store in that ring exceeds the best distance found so far.  This reduces
- * the inner loop from O(all stores) to O(~10–50) for typical urban density.
- * Distances use an equirectangular approximation scaled at the bbox's
- * mid-latitude.
- *
- * If `boundary` is given, the result is clipped to it: alpha is zeroed
- * outside the polygon via a `destination-in` composite fill.
- */
-export function computeDistanceField(
-  stores: StoreCollection,
-  bounds: CityBounds,
-  minDist: number = HEAT_MIN_M,
-  maxDist: number = HEAT_CUTOFF_M,
-  boundary?: Polygon | MultiPolygon | null,
-): DistanceFieldResult {
+interface DistanceGrid {
+  W: number
+  H: number
+  cellSizeM: number
+  /** Per-cell distance in metres to the nearest store, capped at
+   *  HEAT_RAMP_MAX_M. Indexed [cy * W + cx] with cy=0 at minLat (bottom). */
+  dist: Float32Array
+}
+
+// The nearest-store distances depend only on the store set and the bbox, not
+// on the ramp sliders. Cache the most recent grid so dragging "Red within" /
+// "Blue beyond" only re-runs the cheap colorize+clip+encode, never the
+// nearest-neighbour search. Keyed by reference: App rebuilds the filtered
+// FeatureCollection (new identity) whenever stores or active filters change.
+let gridCache: { stores: StoreCollection; bounds: CityBounds; grid: DistanceGrid } | null = null
+
+function computeGrid(stores: StoreCollection, bounds: CityBounds): DistanceGrid {
   const { minLat, maxLat, minLng, maxLng } = bounds
   const latRef = (minLat + maxLat) / 2
   const M_PER_DEG_LNG = M_PER_DEG_LAT * Math.cos((latRef * Math.PI) / 180)
@@ -98,14 +104,12 @@ export function computeDistanceField(
     buckets[by * bCols + bx].push(lngM, latM)
   }
 
-  const canvas = document.createElement('canvas')
-  canvas.width = W
-  canvas.height = H
-  const ctx = canvas.getContext('2d')!
-  const imageData = ctx.createImageData(W, H)
-  const px = imageData.data
-
+  const dist = new Float32Array(W * H)
   const maxRing = Math.max(bCols, bRows) + 1
+  // Cap: cells whose nearest store is beyond the ramp ceiling render blue for
+  // every allowed maxDistance, so seeding bestDist2 here lets the ring search
+  // bail after ~2 rings for far cells instead of scanning the whole grid.
+  const CAP2 = HEAT_RAMP_MAX_M * HEAT_RAMP_MAX_M
 
   for (let cy = 0; cy < H; cy++) {
     const latM = (cy + 0.5) * CELL_M
@@ -115,7 +119,7 @@ export function computeDistanceField(
       const lngM = (cx + 0.5) * CELL_M
       const bxCentre = Math.min(Math.floor(lngM / BUCKET_M), bCols - 1)
 
-      let bestDist2 = Infinity
+      let bestDist2 = CAP2
 
       for (let ring = 0; ring <= maxRing; ring++) {
         // Minimum squared distance for any store in this ring
@@ -142,13 +146,64 @@ export function computeDistanceField(
         }
       }
 
-      const dist = Math.sqrt(bestDist2)
-      const [r, g, b] = distanceToColor(dist, minDist, maxDist)
+      dist[cy * W + cx] = Math.sqrt(bestDist2)
+    }
+  }
+
+  return { W, H, cellSizeM: CELL_M, dist }
+}
+
+/**
+ * Compute a distance-to-nearest-store raster for a city bbox.
+ *
+ * Algorithm: stores are bucketed into a coarse grid (BUCKET_M × BUCKET_M).
+ * For every output cell we search outward ring-by-ring from the cell's home
+ * bucket, stopping as soon as the ring's minimum possible distance to any
+ * store in that ring exceeds the best distance found so far.  This reduces
+ * the inner loop from O(all stores) to O(~10–50) for typical urban density.
+ * Distances use an equirectangular approximation scaled at the bbox's
+ * mid-latitude. The per-cell distances are cached (see gridCache); only the
+ * colorize step below re-runs when the ramp sliders move.
+ *
+ * If `boundary` is given, the result is clipped to it: alpha is zeroed
+ * outside the polygon via a `destination-in` composite fill.
+ */
+export function computeDistanceField(
+  stores: StoreCollection,
+  bounds: CityBounds,
+  minDist: number = HEAT_MIN_M,
+  maxDist: number = HEAT_CUTOFF_M,
+  boundary?: Polygon | MultiPolygon | null,
+): DistanceFieldResult {
+  const { minLat, minLng } = bounds
+  const M_PER_DEG_LNG = M_PER_DEG_LAT * Math.cos(((minLat + bounds.maxLat) / 2 * Math.PI) / 180)
+
+  let cached = gridCache
+  if (!cached || cached.stores !== stores || cached.bounds !== bounds) {
+    cached = { stores, bounds, grid: computeGrid(stores, bounds) }
+    gridCache = cached
+  }
+  const { W, H, cellSizeM: CELL_M, dist } = cached.grid
+
+  const canvas = document.createElement('canvas')
+  canvas.width = W
+  canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  const imageData = ctx.createImageData(W, H)
+  const px = imageData.data
+
+  const invRange = 1 / (maxDist - minDist)
+  for (let cy = 0; cy < H; cy++) {
+    for (let cx = 0; cx < W; cx++) {
+      const d = dist[cy * W + cx]
+      let t = (d - minDist) * invRange
+      t = t < 0 ? 0 : t > 1 ? 1 : t
+      const lo = ((t * LUT_SIZE) | 0) * 3
       // Canvas y=0 is the top (= maxLat), so flip row index
       const pixIdx = ((H - 1 - cy) * W + cx) * 4
-      px[pixIdx]     = r
-      px[pixIdx + 1] = g
-      px[pixIdx + 2] = b
+      px[pixIdx]     = COLOR_LUT[lo]
+      px[pixIdx + 1] = COLOR_LUT[lo + 1]
+      px[pixIdx + 2] = COLOR_LUT[lo + 2]
       px[pixIdx + 3] = ALPHA
     }
   }

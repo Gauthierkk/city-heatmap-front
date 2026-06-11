@@ -1,3 +1,5 @@
+import { type Lang, locale } from '../i18n'
+
 /** Straight-line (haversine) distance in metres between two lng/lat points. */
 export function haversineMetres(
   lng1: number,
@@ -15,7 +17,11 @@ export function haversineMetres(
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-export function formatDistance(metres: number): string {
+export function formatDistance(metres: number, lang: Lang): string {
   if (metres < 1000) return `${Math.round(metres)} m`
-  return `${(metres / 1000).toFixed(1)} km`
+  const km = (metres / 1000).toLocaleString(locale(lang), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  return `${km} km`
 }

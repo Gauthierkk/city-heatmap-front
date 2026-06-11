@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { CityDef } from '../cities'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 import { searchCityAddress, type GeocodeResult } from '../lib/geocode'
 import type { UserLocation } from '../types'
 
 interface Props {
   city: CityDef
+  lang: Lang
   onSelect: (loc: UserLocation) => void
   onClear: () => void
 }
@@ -14,7 +17,7 @@ interface Props {
 const DEBOUNCE_MS = 800
 const MIN_CHARS = 3
 
-export default function AddressSearch({ city, onSelect, onClear }: Props) {
+function AddressSearch({ city, lang, onSelect, onClear }: Props) {
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([])
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'empty'>('idle')
@@ -22,7 +25,8 @@ export default function AddressSearch({ city, onSelect, onClear }: Props) {
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (selected || query.trim().length < MIN_CHARS) {
+    const trimmed = query.trim()
+    if (selected || trimmed.length < MIN_CHARS) {
       setSuggestions([])
       setStatus('idle')
       return
@@ -33,14 +37,19 @@ export default function AddressSearch({ city, onSelect, onClear }: Props) {
       abortRef.current = controller
       setStatus('loading')
       try {
-        const results = await searchCityAddress(city, query, controller.signal)
+        const results = await searchCityAddress(city, trimmed, controller.signal)
         setSuggestions(results)
         setStatus(results.length === 0 ? 'empty' : 'idle')
       } catch (err) {
         if ((err as Error).name !== 'AbortError') setStatus('error')
       }
     }, DEBOUNCE_MS)
-    return () => clearTimeout(timer)
+    // Cancel both the pending debounce and any in-flight request when the query
+    // changes or the component unmounts.
+    return () => {
+      clearTimeout(timer)
+      abortRef.current?.abort()
+    }
   }, [query, selected, city])
 
   function choose(result: GeocodeResult) {
@@ -66,27 +75,25 @@ export default function AddressSearch({ city, onSelect, onClear }: Props) {
         <input
           type="text"
           value={query}
-          placeholder={`Enter a ${city.label} address…`}
-          aria-label={`${city.label} address`}
+          placeholder={t(lang, 'searchPlaceholder', { city: city.label })}
+          aria-label={t(lang, 'searchAria', { city: city.label })}
           onChange={(e) => {
             setQuery(e.target.value)
             setSelected(false)
           }}
         />
         {query && (
-          <button className="clear-btn" onClick={clear} aria-label="Clear address">
+          <button className="clear-btn" onClick={clear} aria-label={t(lang, 'clearAddress')}>
             ✕
           </button>
         )}
       </div>
-      {status === 'loading' && <p className="search-status">Searching…</p>}
+      {status === 'loading' && <p className="search-status">{t(lang, 'searching')}</p>}
       {status === 'empty' && (
-        <p className="search-status error">
-          No {city.label} address found — the search only covers {city.label}.
-        </p>
+        <p className="search-status error">{t(lang, 'noResults', { city: city.label })}</p>
       )}
       {status === 'error' && (
-        <p className="search-status error">Address lookup failed, please try again.</p>
+        <p className="search-status error">{t(lang, 'searchFailed')}</p>
       )}
       {suggestions.length > 0 && (
         <ul className="suggestions" role="listbox">
@@ -100,3 +107,5 @@ export default function AddressSearch({ city, onSelect, onClear }: Props) {
     </div>
   )
 }
+
+export default memo(AddressSearch)

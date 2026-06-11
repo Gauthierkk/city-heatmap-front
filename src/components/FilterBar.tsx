@@ -1,11 +1,15 @@
+import { memo } from 'react'
+import type { Lang } from '../i18n'
+import { t as translate } from '../i18n'
 import { ALL_TAGS, STORE_TYPES } from '../storeTypes'
 
 interface Props {
   activeTags: Set<string>
+  lang: Lang
   onChange: (tags: Set<string>) => void
 }
 
-export default function FilterBar({ activeTags, onChange }: Props) {
+function FilterBar({ activeTags, lang, onChange }: Props) {
   function toggle(tag: string) {
     const next = new Set(activeTags)
     if (next.has(tag)) next.delete(tag)
@@ -16,22 +20,22 @@ export default function FilterBar({ activeTags, onChange }: Props) {
   return (
     <div className="filter-bar">
       <div className="filter-actions">
-        <button onClick={() => onChange(new Set(ALL_TAGS))}>Select all</button>
-        <button onClick={() => onChange(new Set())}>Clear all</button>
+        <button onClick={() => onChange(new Set(ALL_TAGS))}>{translate(lang, 'selectAll')}</button>
+        <button onClick={() => onChange(new Set())}>{translate(lang, 'clearAll')}</button>
       </div>
-      <div className="filter-pills" role="group" aria-label="Store type filters">
-        {STORE_TYPES.map((t) => {
-          const active = activeTags.has(t.tag)
+      <div className="filter-pills" role="group" aria-label={translate(lang, 'filtersAria')}>
+        {STORE_TYPES.map((type) => {
+          const active = activeTags.has(type.tag)
           return (
             <button
-              key={t.tag}
+              key={type.tag}
               className={`pill${active ? ' active' : ''}`}
               aria-pressed={active}
-              style={active ? { borderColor: t.color, backgroundColor: `${t.color}22` } : undefined}
-              onClick={() => toggle(t.tag)}
+              style={active ? { borderColor: type.color, backgroundColor: `${type.color}22` } : undefined}
+              onClick={() => toggle(type.tag)}
             >
-              <span className="pill-dot" style={{ backgroundColor: t.color }} />
-              {t.label}
+              <span className="pill-dot" style={{ backgroundColor: type.color }} />
+              {type.label[lang]}
             </button>
           )
         })}
@@ -39,3 +43,5 @@ export default function FilterBar({ activeTags, onChange }: Props) {
     </div>
   )
 }
+
+export default memo(FilterBar)
