@@ -27,3 +27,9 @@ grocery-related shop types). Intended to be run weekly.
 
 - [Product spec](docs/PRD.md)
 - [Decisions log](docs/DECISIONS.md)
+
+## License
+
+Code is released under the [MIT License](LICENSE). The bundled store and
+boundary data derive from OpenStreetMap and remain © OpenStreetMap
+contributors under the [ODbL](https://www.openstreetmap.org/copyright).
