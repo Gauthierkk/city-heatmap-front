@@ -1,3 +1,5 @@
+import type { DataSourceId } from './storeTypes'
+
 export interface CityBounds {
   minLat: number
   maxLat: number
@@ -16,7 +18,8 @@ export interface CityDef {
   wikidata: string
   /** Nominatim countrycodes restriction for address search */
   countryCodes: string
-  storesFile: string
+  /** Per-source GeoJSON paths (food shared by grocery+specialty, fitness lazy-loaded) */
+  storesFiles: Record<DataSourceId, string>
   boundaryFile: string
 }
 
@@ -29,7 +32,7 @@ export const CITIES: CityDef[] = [
     osmRelation: 71525,
     wikidata: 'Q90',
     countryCodes: 'fr',
-    storesFile: 'data/stores-paris.geojson',
+    storesFiles: { food: 'data/stores-paris.geojson', fitness: 'data/fitness-paris.geojson' },
     boundaryFile: 'data/boundary-paris.geojson',
   },
   {
@@ -40,7 +43,7 @@ export const CITIES: CityDef[] = [
     osmRelation: 175905,
     wikidata: 'Q60',
     countryCodes: 'us',
-    storesFile: 'data/stores-nyc.geojson',
+    storesFiles: { food: 'data/stores-nyc.geojson', fitness: 'data/fitness-nyc.geojson' },
     boundaryFile: 'data/boundary-nyc.geojson',
   },
   {
@@ -53,7 +56,7 @@ export const CITIES: CityDef[] = [
     osmRelation: 113314,
     wikidata: 'Q16559',
     countryCodes: 'us',
-    storesFile: 'data/stores-austin.geojson',
+    storesFiles: { food: 'data/stores-austin.geojson', fitness: 'data/fitness-austin.geojson' },
     boundaryFile: 'data/boundary-austin.geojson',
   },
 ]

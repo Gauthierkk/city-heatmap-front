@@ -1,27 +1,31 @@
 # Grocery Heatmap
 
-React + MapLibre web app showing grocery stores in Paris, New York City, and
-Austin TX with an always-on distance-to-nearest-store overlay and per-address
-closest stores. Fully localised in English and French (see i18n below). Spec:
-[docs/PRD.md](docs/PRD.md); resolved open questions:
-[docs/DECISIONS.md](docs/DECISIONS.md).
+React + MapLibre web app showing three switchable business categories —
+**Grocery**, **Specialty food**, and **Fitness** — across Paris, New York City,
+and Austin TX, with an always-on distance-to-nearest-store overlay and
+per-address closest places. One category is active at a time; the heatmap,
+dots, filters, and closest-place results all operate on it. Fully localised in
+English and French (see i18n below). Spec: [docs/PRD.md](docs/PRD.md);
+resolved open questions: [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Commands
 
 - `npm run dev` — Vite dev server (http://localhost:5173)
 - `npm run build` — type-check (`tsc --noEmit`) + production build
-- `npm run fetch-stores [-- <city>]` — refresh
-  `public/data/stores-<city>.geojson` from Overpass (default `paris`; e.g.
-  `npm run fetch-stores -- nyc`). Intended to run weekly; commit the result.
+- `npm run fetch-stores [-- <city> [<dataset>]]` — refresh store data from
+  Overpass (defaults `paris food`; e.g. `npm run fetch-stores -- nyc fitness`).
+  Datasets: `food` writes `public/data/stores-<city>.geojson` (guard: 100
+  features); `fitness` writes `public/data/fitness-<city>.geojson` (guard: 50
+  features). Intended to run weekly; commit the result.
 - `npm run fetch-boundary [-- <city>]` — refresh
   `public/data/boundary-<city>.geojson` (city admin boundary; Paris relation
   71525, NYC relation 175905 with per-borough fallback, Austin relation
   113314; rarely changes)
 
-Valid `<city>` ids: `paris`, `nyc`, `austin`. Both fetch scripts write
-compact GeoJSON with no `generated` timestamp (so weekly re-runs don't churn
-the committed files); `fetch-stores.mjs` refuses to overwrite if Overpass
-returns < 100 stores (a partial/empty result must not clobber good data).
+Valid `<city>` ids: `paris`, `nyc`, `austin`. Both fetch scripts write compact
+GeoJSON with no `generated` timestamp (so weekly re-runs don't churn the
+committed files); `fetch-stores.mjs` refuses to overwrite if Overpass returns
+fewer features than the per-dataset guard (100 for food, 50 for fitness).
 
 ## Architecture
 
@@ -29,12 +33,21 @@ returns < 100 stores (a partial/empty result must not clobber good data).
   (decision #1).
 - Multi-city (decision #6): all per-city facts live in `CITIES` in
   `src/cities.ts` — id, label, bbox, OSM relation / wikidata ids, Nominatim
-  `countrycodes`, and data file paths. The city is switched via the panel
-  title itself: the city-name portion of "<City> Grocery Heatmap" is a
-  `<select>` (built from the config) styled as heading text with a small
-  chevron; default is Paris. Switching clears the entered address/results,
-  refits the camera, and recomputes the overlay. Store + boundary data are
-  fetched lazily per city and cached in `App.tsx` state for the session.
+  `countrycodes`, and a `storesFiles: Record<DataSourceId, string>` map keying
+  `'food'` and `'fitness'` paths. The city is switched via the panel title: the
+  city-name portion of the title is a `<select>` (built from the config) styled
+  as heading text with a small chevron; default is Paris. City-switching clears
+  the entered address/results, refits the camera, and recomputes the overlay.
+  Store + boundary data are fetched lazily per source file and cached in
+  `App.tsx` state for the session.
+- Category registry (`src/storeTypes.ts`): `CategoryId = 'grocery' | 'specialty'
+  | 'fitness'`; `CATEGORIES: CategoryDef[]` (`{ id, label, source: DataSourceId
+  }`). `typesForCategory(id)` and `tagsForCategory(id)` return **precomputed,
+  referentially stable** arrays — FilterBar receives them as props and stays
+  memo'd. Grocery = 5 food types (supermarket, convenience, greengrocer,
+  organic, frozen_food); Specialty = the other 13 food types (incl. bakery);
+  Fitness = 6 new types (gym, yoga, pilates, martial_arts, dance, climbing).
+  `categoryById(id)` mirrors `cityById` with a fallback to the default.
 - Map navigation is clipped per city: on select, `MapView` contain-fits the
   city bbox, sets `minZoom` to the fitted zoom (minus a small epsilon), and
   sets `maxBounds` to the fitted viewport (`map.getBounds()`) — at max
@@ -43,21 +56,27 @@ returns < 100 stores (a partial/empty result must not clobber good data).
   depends on viewport aspect, so it is re-applied on map `resize` (debounced
   150 ms). Constraints are lifted momentarily before each re-fit so the new
   framing doesn't fight the old clip.
-- Store data is pre-baked GeoJSON in `public/data/stores-<city>.geojson`,
-  fetched at runtime from the app's own origin (decision #2). The fetch +
-  session cache lives in two self-contained effects in `App.tsx`; this
+- Store data is pre-baked GeoJSON fetched at runtime from the app's own origin
+  (decision #2). Two source files per city: `public/data/stores-<city>.geojson`
+  (food — serves both Grocery and Specialty, split client-side by tag set) and
+  `public/data/fitness-<city>.geojson` (fitness — lazy-loaded on first selection
+  per city). The `App.tsx` cache (`storesBySource`) is keyed by source file
+  path so Grocery↔Specialty share the warm food file without re-fetching. The
+  fetch + session cache lives in two self-contained effects in `App.tsx`; this
   data-loading boundary is slated to move into a dedicated worker later, so
   keep it isolated. `scripts/fetch-stores.mjs` queries Overpass by the city's
   wikidata area id (Paris Q90, NYC Q60, Austin Q16559).
 - OSM tag quirks handled in the fetch script: fishmongers are `shop=seafood`,
   organic stores are any shop with `organic=only`; both are normalised to the
   PRD's category names (`fishmonger`, `organic`) so the app only sees the 18
-  canonical types in `src/storeTypes.ts`. The list was expanded from 12 (it
-  had been NYC-shaped) to 18 from Overpass counts across all three cities,
+  canonical food types in `src/storeTypes.ts`. The list was expanded from 12
+  (it had been NYC-shaped) to 18 from Overpass counts across all three cities,
   adding `pastry`, `wine`, `chocolate`, `confectionery`, `tea`, `coffee` —
   each with ≥30 stores in at least one city (Paris drove pâtisserie /
   chocolatier / cave à vins). `SHOP_TYPES` in `fetch-stores.mjs` must stay in
-  sync with the tags in `src/storeTypes.ts`.
+  sync with the food tags in `src/storeTypes.ts`; the fitness sport list and
+  `normaliseFitness` in `fetch-stores.mjs` must stay in sync with the fitness
+  tags in `src/storeTypes.ts`.
 - Always-on distance-to-nearest-store overlay (decision #3, updated
   2026-06-11): a grid over the city bbox is coloured by proximity — red
   at/below a min distance → orange → yellow → green → cyan → blue at/beyond a
@@ -89,17 +108,25 @@ returns < 100 stores (a partial/empty result must not clobber good data).
 - State lives in `App.tsx`; `MapView` is the only component that touches the
   MapLibre instance (via refs + effects).
 - i18n: hand-rolled, no dependency (`src/i18n.ts`). Two locales (`en`/`fr`);
-  `t(lang, key, params?)` does `{slot}` interpolation, `titleParts(lang)`
-  splits the title around the city `<select>` (English leads with the city,
-  French trails it). `lang` is App state, defaults from `navigator.language`
-  (`detectLang`), is **never persisted** (consistent with the no-storage
-  stance), and is passed down as a prop; an effect mirrors it to
-  `document.documentElement.lang`. Store-type labels are per-language in
-  `STORE_TYPES` (`typeLabel(tag, lang)`); `formatDistance(m, lang)` uses the
-  locale's decimal separator. MapView popups read `lang` via a ref so the
-  once-bound click handler stays current. The panel children
-  (`AddressSearch`, `FilterBar`, `ResultsPanel`) are `React.memo`'d with
-  stable callbacks so ramp-slider drags don't re-render them.
+  `t(lang, key, params?)` does `{slot}` interpolation. `titleSegments(lang)`
+  returns a `TitleSegment[]` (text / city-slot / category-slot) that `App.tsx`
+  renders as a mix of text and two inline `<select>` elements — EN pattern
+  `'{city} {category} Heatmap'`, FR pattern `'{category} à {city}'`. `lang` is
+  App state, defaults from `navigator.language` (`detectLang`), is **never
+  persisted** (consistent with the no-storage stance), and is passed down as a
+  prop; an effect mirrors it to `document.documentElement.lang`. Store-type
+  labels are per-language in `STORE_TYPES` (`typeLabel(tag, lang)`);
+  `formatDistance(m, lang)` uses the locale's decimal separator. MapView popups
+  read `lang` via a ref so the once-bound click handler stays current. The panel
+  children (`AddressSearch`, `FilterBar`, `ResultsPanel`) are `React.memo`'d
+  with stable callbacks so ramp-slider drags don't re-render them.
+- Category switching (`switchCategory` in `App.tsx`): keeps the entered
+  address and marker (closest-place results re-rank automatically against the
+  new category), resets `activeTags` to the new category's full tag set, and
+  clears `focusedStoreId` / `loadError`. A `categoryTotal` memo counts features
+  whose `shop` tag belongs to the active category's tag set, so the hint line
+  shows the correct count (not the full food-file count) under Grocery or
+  Specialty.
 
 ## Gotchas
 
@@ -118,3 +145,8 @@ returns < 100 stores (a partial/empty result must not clobber good data).
 - The NYC OSM admin polygon extends into harbour/bay water (~1,223 km² vs
   ~784 km² of land) — area sanity checks in `fetch-boundary.mjs` are
   per-city for this reason.
+- Fitness features deliberately reuse the `shop` property key (e.g.
+  `shop: 'yoga'`, `shop: 'gym'`). This is intentional: `StoreProperties`,
+  MapView's `['get', 'shop']` expressions, and `distanceField.ts` stay
+  completely untouched. Do not rename the property to `leisure` or `sport` — it
+  would require edits across multiple files for no functional gain.

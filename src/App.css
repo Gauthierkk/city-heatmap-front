@@ -40,6 +40,7 @@ body,
   font-size: 1.1rem;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -88,7 +89,7 @@ body,
   border-color: #aab6f5;
 }
 
-/* City switcher: the city name inside the title is the dropdown, styled to
+/* City/category switchers: both title selects share these classes, styled to
    read as heading text with a small chevron as the only affordance */
 .city-select-wrap {
   display: inline-grid;

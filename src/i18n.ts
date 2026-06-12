@@ -18,18 +18,19 @@ type Params = Record<string, string | number>
 
 const STRINGS: Record<Lang, Record<string, string>> = {
   en: {
-    // {city} marks where the city <select> is spliced in (see titleParts)
-    title: '{city} Grocery Heatmap',
+    // {city} and {category} mark where the two <select>s are spliced in (see titleSegments)
+    title: '{city} {category} Heatmap',
     cityAria: 'City',
+    categoryAria: 'Category',
     switchLang: 'Passer en français', // names the target language, in that language
     minimizePanel: 'Minimize panel',
     expandPanel: 'Expand panel',
-    loadError: 'Could not load store data: {msg}',
+    loadError: 'Could not load map data: {msg}',
     heatmapSettings: 'Heatmap settings',
     redWithin: 'Red within: {n} m',
     blueBeyond: 'Blue beyond: {n} m',
     opacity: 'Opacity: {n}%',
-    hint: 'Enter your address to see your closest stores ({n} stores loaded).',
+    hint: 'Enter your address to see your closest places ({n} loaded).',
     searchPlaceholder: 'Enter a {city} address…',
     searchAria: '{city} address',
     clearAddress: 'Clear address',
@@ -38,26 +39,27 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     searchFailed: 'Address lookup failed, please try again.',
     selectAll: 'Select all',
     clearAll: 'Clear all',
-    filtersAria: 'Store type filters',
-    noMatches: 'No stores match the active filters.',
-    closestStores: 'Closest stores',
+    filtersAria: 'Type filters',
+    noMatches: 'Nothing matches the active filters.',
+    closestStores: 'Closest places',
     showTop5: 'Show top 5',
     showTop10: 'Show top 10',
     unnamed: '(unnamed {type})',
     fromYourAddress: '{d} from your address',
   },
   fr: {
-    title: 'Commerces alimentaires à {city}',
+    title: '{category} à {city}',
     cityAria: 'Ville',
+    categoryAria: 'Catégorie',
     switchLang: 'Switch to English',
     minimizePanel: 'Réduire le panneau',
     expandPanel: 'Déplier le panneau',
-    loadError: 'Impossible de charger les commerces : {msg}',
+    loadError: 'Impossible de charger les données : {msg}',
     heatmapSettings: 'Réglages de la carte',
     redWithin: 'Rouge en deçà de : {n} m',
     blueBeyond: 'Bleu au-delà de : {n} m',
     opacity: 'Opacité : {n} %',
-    hint: 'Saisissez votre adresse pour voir les commerces les plus proches ({n} commerces chargés).',
+    hint: 'Saisissez votre adresse pour voir les établissements les plus proches ({n} chargés).',
     searchPlaceholder: 'Saisissez une adresse à {city}…',
     searchAria: 'Adresse à {city}',
     clearAddress: "Effacer l'adresse",
@@ -66,9 +68,9 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     searchFailed: "La recherche d'adresse a échoué, veuillez réessayer.",
     selectAll: 'Tout sélectionner',
     clearAll: 'Tout effacer',
-    filtersAria: 'Filtres par type de commerce',
-    noMatches: 'Aucun commerce ne correspond aux filtres actifs.',
-    closestStores: 'Commerces les plus proches',
+    filtersAria: 'Filtres par type',
+    noMatches: 'Aucun établissement ne correspond aux filtres actifs.',
+    closestStores: 'Établissements les plus proches',
     showTop5: 'Voir le top 5',
     showTop10: 'Voir le top 10',
     unnamed: '({type} sans nom)',
@@ -84,12 +86,21 @@ export function t(lang: Lang, key: string, params?: Params): string {
   return s
 }
 
-/** The title with the {city} slot removed, split into the text before and
- *  after it, so App can render the city <select> at the slot position
- *  (English puts the city first, French last). */
-export function titleParts(lang: Lang): [string, string] {
-  const [before, after] = t(lang, 'title').split('{city}')
-  return [before ?? '', after ?? '']
+export type TitleSegment =
+  | { kind: 'text'; value: string }
+  | { kind: 'slot'; slot: 'city' | 'category' }
+
+/** The title split into text and slot segments so App can render each
+ *  <select> at its {city} / {category} position. */
+export function titleSegments(lang: Lang): TitleSegment[] {
+  const parts = t(lang, 'title').split(/(\{city\}|\{category\})/)
+  return parts
+    .filter((p) => p !== '')
+    .map((p): TitleSegment => {
+      if (p === '{city}') return { kind: 'slot', slot: 'city' }
+      if (p === '{category}') return { kind: 'slot', slot: 'category' }
+      return { kind: 'text', value: p }
+    })
 }
 
 /** Locale tag for Intl/toLocaleString formatting. */

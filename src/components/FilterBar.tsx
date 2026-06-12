@@ -1,15 +1,16 @@
 import { memo } from 'react'
 import type { Lang } from '../i18n'
 import { t as translate } from '../i18n'
-import { ALL_TAGS, STORE_TYPES } from '../storeTypes'
+import type { StoreTypeDef } from '../storeTypes'
 
 interface Props {
+  types: StoreTypeDef[]
   activeTags: Set<string>
   lang: Lang
   onChange: (tags: Set<string>) => void
 }
 
-function FilterBar({ activeTags, lang, onChange }: Props) {
+function FilterBar({ types, activeTags, lang, onChange }: Props) {
   function toggle(tag: string) {
     const next = new Set(activeTags)
     if (next.has(tag)) next.delete(tag)
@@ -20,11 +21,11 @@ function FilterBar({ activeTags, lang, onChange }: Props) {
   return (
     <div className="filter-bar">
       <div className="filter-actions">
-        <button onClick={() => onChange(new Set(ALL_TAGS))}>{translate(lang, 'selectAll')}</button>
+        <button onClick={() => onChange(new Set(types.map((t) => t.tag)))}>{translate(lang, 'selectAll')}</button>
         <button onClick={() => onChange(new Set())}>{translate(lang, 'clearAll')}</button>
       </div>
       <div className="filter-pills" role="group" aria-label={translate(lang, 'filtersAria')}>
-        {STORE_TYPES.map((type) => {
+        {types.map((type) => {
           const active = activeTags.has(type.tag)
           return (
             <button
