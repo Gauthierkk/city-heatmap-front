@@ -2,6 +2,7 @@ export interface StoreProperties {
   id: string
   name: string | null
   shop: string
+  source?: 'osm' | 'overture'
 }
 
 export interface StoreFeature {
