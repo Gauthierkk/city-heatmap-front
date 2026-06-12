@@ -96,28 +96,61 @@ area["wikidata"="${wikidata}"]["boundary"="administrative"]->.city;
   nwr["leisure"="fitness_centre"](area.city);
   nwr["leisure"="dance"](area.city);
   nwr["leisure"]["sport"~"fitness|yoga|pilates|martial_arts|karate|judo|taekwondo|boxing|mma|climbing|dance"](area.city);
+  nwr[!"leisure"]["sport"~"fitness|yoga|pilates|martial_arts|karate|judo|taekwondo|boxing|mma|climbing|dance"](area.city);
+  nwr["amenity"~"^(dojo|dancing_school|gym)$"](area.city);
+  nwr["club"="sport"](area.city);
+  nwr["leisure"="sports_hall"](area.city);
 );
 out center tags;
 `
 }
 
 const MARTIAL = new Set(['martial_arts', 'karate', 'judo', 'taekwondo', 'boxing', 'mma'])
-const EXCLUDED_LEISURE = new Set(['fitness_station', 'pitch', 'track']) // outdoor facilities, not businesses
+// Outdoor / non-business leisure values that should never yield a result
+const EXCLUDED_LEISURE = new Set(['fitness_station', 'pitch', 'track', 'swimming_pool', 'water_park'])
 
-function normaliseFitness(tags) {
-  const leisure = tags.leisure
-  if (!leisure || EXCLUDED_LEISURE.has(leisure)) return null
-  if (tags.shop) return null // strictly no retail
+// Classify purely from the sport tag using the canonical priority chain.
+// Returns one of the six canonical types, or null if no match.
+function classifyBySport(tags) {
   const sports = (tags.sport ?? '').split(';').map((s) => s.trim().toLowerCase())
   const has = (s) => sports.includes(s)
   if (has('yoga')) return 'yoga'
   if (has('pilates')) return 'pilates'
   if (sports.some((s) => MARTIAL.has(s))) return 'martial_arts'
   if (has('climbing')) return 'climbing'
-  if (leisure === 'dance' || has('dance')) return 'dance'
+  if (has('dance')) return 'dance'
+  if (has('fitness')) return 'gym'
+  return null // rowing, pétanque, tennis, swimming, etc. — filter these out
+}
+
+function normaliseFitness(tags) {
+  if (tags.shop) return null // strictly no retail
+
+  const leisure = tags.leisure
+  const amenity = tags.amenity
+
+  // Explicit EXCLUDED_LEISURE values are always outdoor/non-business facilities
+  if (leisure && EXCLUDED_LEISURE.has(leisure)) return null
+
+  // amenity-keyed variants: dojo, dancing_school, gym
+  if (amenity === 'dojo') return 'martial_arts'
+  if (amenity === 'dancing_school') return 'dance'
+  if (amenity === 'gym') return 'gym'
+
+  // Sport tag takes priority over leisure for all cases where both are present:
+  // a fitness_centre tagged sport=yoga is a yoga studio, not a generic gym.
+  // classifyBySport returns null when no recognised sport tag is found.
+  const bySport = classifyBySport(tags)
+  if (bySport !== null) return bySport
+
+  // No recognised sport tag — fall back to leisure semantics.
+  // leisure=fitness_centre → gym; leisure=dance → dance studio.
   if (leisure === 'fitness_centre') return 'gym'
-  if (leisure === 'sports_centre' && has('fitness')) return 'gym'
-  return null // generic sports_centre (pools/municipal halls), unrelated leisure
+  if (leisure === 'dance') return 'dance'
+
+  // sports_centre, sports_hall, club=sport, bare sport=* with no matching sport
+  // tag: nothing we can classify (e.g. rowing, pétanque, tennis, municipal halls).
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +204,90 @@ async function fetchOverpass() {
   throw new Error(`All Overpass endpoints failed. Last error: ${lastError?.message}`)
 }
 
+// ---------------------------------------------------------------------------
+// Conflation helpers
+// ---------------------------------------------------------------------------
+
+// Haversine distance in metres between two (lat, lon) pairs.
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6_371_000
+  const toRad = (d) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+// Normalise a display name for exact-match conflation:
+// lowercase → strip diacritics (NFD + strip combining marks) → strip punctuation → collapse whitespace.
+function normName(name) {
+  if (!name) return ''
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Remove node+way duplicate pairs: same normalised name, same canonical type,
+// within 50 m. Prefer keeping a node over a way/relation; otherwise keep first seen.
+const CONFLATION_RADIUS_M = 50
+
+function conflate(features) {
+  // Group by (normalisedName + '|' + shopType). Features with empty normalised
+  // names are never conflated (kept unconditionally).
+  const groups = new Map() // key → Feature[]
+  const unnamed = []
+  for (const f of features) {
+    const nn = normName(f.properties.name)
+    if (!nn) { unnamed.push(f); continue }
+    const key = `${nn}|${f.properties.shop}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(f)
+  }
+
+  const kept = [...unnamed]
+  let removed = 0
+
+  for (const group of groups.values()) {
+    if (group.length === 1) { kept.push(group[0]); continue }
+
+    // Within each name+type group, do a pairwise distance check and mark
+    // duplicates.  O(k²) but k is tiny (almost always 2–3 per group).
+    const suppress = new Set()
+    for (let i = 0; i < group.length; i++) {
+      if (suppress.has(i)) continue
+      for (let j = i + 1; j < group.length; j++) {
+        if (suppress.has(j)) continue
+        const [lonI, latI] = group[i].geometry.coordinates
+        const [lonJ, latJ] = group[j].geometry.coordinates
+        if (haversineM(latI, lonI, latJ, lonJ) <= CONFLATION_RADIUS_M) {
+          // Determine which to suppress: prefer keeping nodes over ways/relations
+          const typeI = group[i].properties.id.split('/')[0]
+          const typeJ = group[j].properties.id.split('/')[0]
+          if (typeI === 'node' && typeJ !== 'node') {
+            suppress.add(j)
+          } else if (typeJ === 'node' && typeI !== 'node') {
+            suppress.add(i)
+          } else {
+            suppress.add(j) // both same type — keep first seen (lower index)
+          }
+        }
+      }
+    }
+    for (let i = 0; i < group.length; i++) {
+      if (suppress.has(i)) { removed++ } else { kept.push(group[i]) }
+    }
+  }
+
+  console.log(`Conflated ${removed} duplicate(s)`)
+  return kept
+}
+
 function toGeoJSON(overpass, normalise) {
   const features = []
   const seen = new Set()
@@ -193,11 +310,14 @@ function toGeoJSON(overpass, normalise) {
       },
     })
   }
+
+  const dedupedFeatures = conflate(features)
+
   // No `generated` timestamp: it would change on every weekly run and churn the
   // committed file / git diff even when no stores actually changed.
   return {
     type: 'FeatureCollection',
-    features,
+    features: dedupedFeatures,
   }
 }
 
