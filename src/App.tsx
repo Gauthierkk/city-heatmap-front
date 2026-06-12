@@ -205,77 +205,80 @@ export default function App() {
       />
       <div className="panel">
         <h1 className="panel-title">
-          {/* The title template places two <select>s at {city} and {category}.
-              English leads with city, French trails it. The hidden sizer span
-              shrinks each select to its chosen label width exactly. */}
-          {titleSegments(lang).map((seg, i) => {
-            if (seg.kind === 'text') return <span key={i}>{seg.value}</span>
-            if (seg.slot === 'city') {
+          <div className="panel-title-buttons">
+            <button
+              className="lang-toggle-btn"
+              onClick={() => setLang((l) => (l === 'en' ? 'fr' : 'en'))}
+              aria-label={t(lang, 'switchLang')}
+            >
+              {lang === 'en' ? 'FR' : 'EN'}
+            </button>
+            <button
+              className="lang-toggle-btn"
+              onClick={toggleTheme}
+              aria-label={t(lang, theme === 'dark' ? 'lightMode' : 'darkMode')}
+              title={t(lang, theme === 'dark' ? 'lightMode' : 'darkMode')}
+            >
+              {theme === 'dark' ? '☀' : '☾'}
+            </button>
+            <button
+              className="panel-toggle-btn"
+              onClick={() => setPanelExpanded((v) => !v)}
+              aria-label={panelExpanded ? t(lang, 'minimizePanel') : t(lang, 'expandPanel')}
+              aria-expanded={panelExpanded}
+            >
+              {panelExpanded ? '−' : '+'}
+            </button>
+          </div>
+          <div className="panel-title-text">
+            {/* The title template places two <select>s at {city} and {category}.
+                English leads with city, French trails it. The hidden sizer span
+                shrinks each select to its chosen label width exactly. */}
+            {titleSegments(lang).map((seg, i) => {
+              if (seg.kind === 'text') return <span key={i}>{seg.value}</span>
+              if (seg.slot === 'city') {
+                return (
+                  <span key="city" className="city-select-wrap">
+                    <select
+                      className="city-select"
+                      value={city.id}
+                      aria-label={t(lang, 'cityAria')}
+                      onChange={(e) => switchCity(e.target.value)}
+                    >
+                      {CITIES.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="city-select-sizer" aria-hidden="true">
+                      {city.label}
+                    </span>
+                  </span>
+                )
+              }
+              // seg.slot === 'category'
               return (
-                <span key="city" className="city-select-wrap">
+                <span key="category" className="city-select-wrap">
                   <select
                     className="city-select"
-                    value={city.id}
-                    aria-label={t(lang, 'cityAria')}
-                    onChange={(e) => switchCity(e.target.value)}
+                    value={category.id}
+                    aria-label={t(lang, 'categoryAria')}
+                    onChange={(e) => switchCategory(e.target.value)}
                   >
-                    {CITIES.map((c) => (
+                    {CATEGORIES.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.label}
+                        {c.label[lang]}
                       </option>
                     ))}
                   </select>
                   <span className="city-select-sizer" aria-hidden="true">
-                    {city.label}
+                    {category.label[lang]}
                   </span>
                 </span>
               )
-            }
-            // seg.slot === 'category'
-            return (
-              <span key="category" className="city-select-wrap">
-                <select
-                  className="city-select"
-                  value={category.id}
-                  aria-label={t(lang, 'categoryAria')}
-                  onChange={(e) => switchCategory(e.target.value)}
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label[lang]}
-                    </option>
-                  ))}
-                </select>
-                <span className="city-select-sizer" aria-hidden="true">
-                  {category.label[lang]}
-                </span>
-              </span>
-            )
-          })}
-          <button
-            className="lang-toggle-btn"
-            onClick={() => setLang((l) => (l === 'en' ? 'fr' : 'en'))}
-            aria-label={t(lang, 'switchLang')}
-          >
-            {lang === 'en' ? 'FR' : 'EN'}
-          </button>
-          <button
-            className="lang-toggle-btn"
-            onClick={toggleTheme}
-            // Names the mode the click switches to, mirroring switchLang
-            aria-label={t(lang, theme === 'dark' ? 'lightMode' : 'darkMode')}
-            title={t(lang, theme === 'dark' ? 'lightMode' : 'darkMode')}
-          >
-            {theme === 'dark' ? '☀' : '☾'}
-          </button>
-          <button
-            className="panel-toggle-btn"
-            onClick={() => setPanelExpanded((v) => !v)}
-            aria-label={panelExpanded ? t(lang, 'minimizePanel') : t(lang, 'expandPanel')}
-            aria-expanded={panelExpanded}
-          >
-            {panelExpanded ? '−' : '+'}
-          </button>
+            })}
+          </div>
         </h1>
         {panelExpanded && (
           <>

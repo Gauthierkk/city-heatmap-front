@@ -39,13 +39,24 @@ body,
   margin: 0 0 10px;
   font-size: 1.1rem;
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.panel-title-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.panel-title-text {
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
 }
 
 .panel-toggle-btn {
-  margin-left: auto;
   flex: none;
   width: 24px;
   height: 24px;
@@ -67,9 +78,8 @@ body,
   border-color: #aab6f5;
 }
 
-/* Language toggle: groups with the panel toggle at the right of the title */
+/* Language toggle: sits in the buttons row alongside the panel toggle */
 .lang-toggle-btn {
-  margin-left: auto;
   flex: none;
   height: 24px;
   padding: 0 8px;
