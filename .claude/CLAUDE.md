@@ -12,20 +12,26 @@ resolved open questions: [docs/DECISIONS.md](docs/DECISIONS.md).
 
 - `npm run dev` — Vite dev server (http://localhost:5173)
 - `npm run build` — type-check (`tsc --noEmit`) + production build
-- `npm run fetch-stores [-- <city> [<dataset>]]` — refresh store data from
-  Overpass (defaults `paris food`; e.g. `npm run fetch-stores -- nyc fitness`).
-  Datasets: `food` writes `public/data/stores-<city>.geojson` (guard: 100
-  features); `fitness` writes `public/data/fitness-<city>.geojson` (guard: 50
-  features). Intended to run weekly; commit the result.
+- `npm run fetch-stores [-- <city> [<dataset>]]` — refresh store data via
+  `python3 -m data fetch-stores` (defaults `paris food`; e.g.
+  `npm run fetch-stores -- nyc fitness`). Datasets: `food` writes
+  `public/data/stores-<city>.geojson` (guard: 100 features, OSM only); `fitness`
+  writes `public/data/fitness-<city>.geojson` (OSM guard: 50 features before
+  merge; drop guard: 70 % of committed baseline after merge). Fitness runs
+  merge OSM + Overture Maps Places (requires `duckdb`; pass `--no-overture` to
+  skip Overture and use OSM only). Intended to run weekly; commit the result.
+  For all cities × datasets at once use `python3 -m data fetch-stores --all`
+  (sleeps ~10 s between calls). See `data/README.md` for full options.
 - `npm run fetch-boundary [-- <city>]` — refresh
-  `public/data/boundary-<city>.geojson` (city admin boundary; Paris relation
-  71525, NYC relation 175905 with per-borough fallback, Austin relation
-  113314; rarely changes)
+  `public/data/boundary-<city>.geojson` via `python3 -m data fetch-boundary`
+  (city admin boundary; Paris relation 71525, NYC relation 175905 with
+  per-borough fallback, Austin relation 113314; rarely changes)
 
 Valid `<city>` ids: `paris`, `nyc`, `austin`. Both fetch scripts write compact
 GeoJSON with no `generated` timestamp (so weekly re-runs don't churn the
-committed files); `fetch-stores.mjs` refuses to overwrite if Overpass returns
-fewer features than the per-dataset guard (100 for food, 50 for fitness).
+committed files); `python3 -m data fetch-stores` refuses to overwrite if
+Overpass returns fewer features than the per-dataset guard (100 for food, 50
+for fitness).
 
 ## Architecture
 
@@ -75,8 +81,39 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
   path so Grocery↔Specialty share the warm food file without re-fetching. The
   fetch + session cache lives in two self-contained effects in `App.tsx`; this
   data-loading boundary is slated to move into a dedicated worker later, so
-  keep it isolated. `scripts/fetch-stores.mjs` queries Overpass by the city's
-  wikidata area id (Paris Q90, NYC Q60, Austin Q16559).
+  keep it isolated. `data/overpass.py` queries Overpass by the city's
+  wikidata area id (Paris Q90, NYC Q60, Austin Q16559). `data/cities.py` must
+  stay in sync with `src/cities.ts`.
+- **Fitness data sources** (2026-06-12): fitness files are merged from two
+  sources — OSM (via `data/overpass.py`) as backbone, plus Overture Maps Places
+  (via `data/overture.py`, DuckDB against S3) to fill gaps. The pipeline is
+  `python3 -m data fetch-stores <city> fitness`: Overpass fetch → Overture fetch
+  → merge (`data/merge.py`) → guards → write. Food stays OSM-only.
+  - **Merge semantics** (`data/merge.py`): an Overture place is a duplicate of
+    an OSM feature when within 100 m AND names roughly match (substring
+    containment OR token-Jaccard ≥ 0.5). Comparison is cross-type (the same
+    venue may be typed 'gym' in one source and 'yoga' in the other). When
+    duplicate, OSM wins. Every output feature gets `source: 'osm' | 'overture'`
+    (`StoreProperties.source` in `src/types.ts` is `optional` — app ignores it).
+  - **Guards**: OSM minimum (50 features) is checked BEFORE merging. After
+    merge, a **drop guard** refuses to write if the new total is below 70 % of
+    the committed baseline file — protects against silent Overture S3 outages.
+    The drop guard is skipped when `--no-overture` is set.
+  - **`--no-overture` flag**: skips Overture fetch+merge entirely, uses OSM
+    only. Useful when DuckDB/S3 is unavailable or for debugging. Implies
+    no drop guard.
+  - **Overture release** is pinned in `data/overture.py:OVERTURE_RELEASE`
+    (`"2026-05-20.0"`) — bump deliberately. Confidence threshold:
+    `OVERTURE_CONFIDENCE_MIN = 0.7`.
+  - **Category mapping** (validated Austin + spot-checked Paris/NYC): gym ←
+    gym/gymnastics_center/health_and_wellness_club; yoga ← yoga_studio; pilates
+    ← pilates_studio; martial_arts ← martial_arts_club/boxing_class/boxing_club/
+    boxing_gym/kickboxing_club/taekwondo_club/karate_club; dance ← dance_school;
+    climbing ← rock_climbing_gym/rock_climbing_spot. Excluded (junk in all
+    cities): fitness_trainer, adventure_sports_center, health_coach,
+    sports_and_fitness_instruction.
+  - `data/overture.py` imports duckdb lazily so OSM-only commands work without
+    it. Install: `pip3 install duckdb --user --break-system-packages`.
 - OSM tag quirks handled in the fetch script: fishmongers are `shop=seafood`,
   organic stores are any shop with `organic=only`; both are normalised to the
   PRD's category names (`fishmonger`, `organic`) so the app only sees the 18
@@ -84,9 +121,9 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
   (it had been NYC-shaped) to 18 from Overpass counts across all three cities,
   adding `pastry`, `wine`, `chocolate`, `confectionery`, `tea`, `coffee` —
   each with ≥30 stores in at least one city (Paris drove pâtisserie /
-  chocolatier / cave à vins). `SHOP_TYPES` in `fetch-stores.mjs` must stay in
+  chocolatier / cave à vins). `SHOP_TYPES` in `data/overpass.py` must stay in
   sync with the food tags in `src/storeTypes.ts`; the fitness sport list and
-  `normaliseFitness` in `fetch-stores.mjs` must stay in sync with the fitness
+  `normalise_fitness` in `data/overpass.py` must stay in sync with the fitness
   tags in `src/storeTypes.ts`.
 - Always-on distance-to-nearest-store overlay (decision #3, updated
   2026-06-12): a grid over the city bbox is coloured by proximity — red
@@ -111,7 +148,7 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
   (brightened from `[20, 60, 220]` to distinguish from navy background); cyan
   lightened to `[40, 220, 210]`. Default raster opacity is 0.65 (was 0.7).
 - The overlay is clipped to the city's administrative boundary
-  (`public/data/boundary-<city>.geojson`, from `scripts/fetch-boundary.mjs`)
+  (`public/data/boundary-<city>.geojson`, from `data/boundary.py`)
   via a `destination-in` composite fill on the same canvas; a thin
   `boundary-line` layer outlines the clip edge. If the boundary file is
   missing the overlay renders unclipped (fail soft).
@@ -163,7 +200,7 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
 - No address persistence anywhere (PRD §5) — do not add localStorage/server
   storage of the user's address.
 - The NYC OSM admin polygon extends into harbour/bay water (~1,223 km² vs
-  ~784 km² of land) — area sanity checks in `fetch-boundary.mjs` are
+  ~784 km² of land) — area sanity checks in `data/boundary.py` are
   per-city for this reason.
 - Fitness features deliberately reuse the `shop` property key (e.g.
   `shop: 'yoga'`, `shop: 'gym'`). This is intentional: `StoreProperties`,

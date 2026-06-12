@@ -7,8 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "fetch-stores": "node scripts/fetch-stores.mjs",
-    "fetch-boundary": "node scripts/fetch-boundary.mjs"
+    "fetch-stores": "python3 -m data fetch-stores",
+    "fetch-boundary": "python3 -m data fetch-boundary"
   },
   "dependencies": {
     "maplibre-gl": "^5.6.0",

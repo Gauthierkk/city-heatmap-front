@@ -6,7 +6,6 @@ Mirrors the conflation pass from the retired scripts/fetch-stores.mjs.
 from __future__ import annotations
 
 import math
-import sys
 import unicodedata
 import re
 from typing import Any

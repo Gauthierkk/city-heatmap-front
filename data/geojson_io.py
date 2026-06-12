@@ -46,6 +46,7 @@ def _build_feature(
             'id': feat_id,
             'name': tags.get('name'),  # None when absent — serialises as null
             'shop': canonical,
+            'source': 'osm',
         },
     }
 
@@ -104,7 +105,9 @@ def print_counts(geojson: dict[str, Any], city_id: str, dataset_id: str) -> None
 
 def write_geojson(geojson: dict[str, Any], out_path: str) -> None:
     """Serialise to compact JSON and write to out_path, creating directories as needed."""
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    parent = os.path.dirname(out_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     compact = json.dumps(geojson, separators=(',', ':'), ensure_ascii=False)
     with open(out_path, 'w', encoding='utf-8') as fh:
         fh.write(compact)
