@@ -15,8 +15,16 @@ import {
   typesForCategory,
   type CategoryId,
 } from './storeTypes'
-import type { RankedStore, StoreCollection, UserLocation } from './types'
+import type { RankedStore, StoreCollection, Theme, UserLocation } from './types'
 import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M } from './types'
+
+/** OS-derived default basemap theme; read once at startup, not live-tracked. */
+function detectTheme(): Theme {
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light'
+}
 
 // True when two tag sets are equal — lets us no-op identical filter updates
 // (e.g. "Select all" when everything is already active) so the memoised
@@ -48,6 +56,8 @@ export default function App() {
   const [cityId, setCityId] = useState(DEFAULT_CITY.id)
   const [categoryId, setCategoryId] = useState<CategoryId>(DEFAULT_CATEGORY.id)
   const [lang, setLang] = useState<Lang>(detectLang)
+  // Like lang: seeded from the browser, never persisted, passed as a prop.
+  const [theme, setTheme] = useState<Theme>(detectTheme)
   const [panelExpanded, setPanelExpanded] = useState(true)
   // Per-source-file caches: keyed by the GeoJSON path, fetched once per session.
   // Grocery and Specialty share the food file; Fitness has its own per-city file.
@@ -62,7 +72,9 @@ export default function App() {
   const [activeTags, setActiveTags] = useState<Set<string>>(
     new Set(tagsForCategory(DEFAULT_CATEGORY.id)),
   )
-  const [heatOpacity, setHeatOpacity] = useState(0.7)
+  // Slightly reduced from 0.7 → 0.65 for Fiord dark basemap: overlay colours
+  // are vivid enough at 0.65 and bleed less into the navy background.
+  const [heatOpacity, setHeatOpacity] = useState(0.65)
   const [minDistance, setMinDistance] = useState(HEAT_MIN_M)
   const [maxDistance, setMaxDistance] = useState(HEAT_CUTOFF_M)
   const [focusedStoreId, setFocusedStoreId] = useState<string | null>(null)
@@ -143,6 +155,7 @@ export default function App() {
   }, [])
   const clearUser = useCallback(() => setUser(null), [])
   const handleFocusHandled = useCallback(() => setFocusedStoreId(null), [])
+  const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
 
   const filteredStores = useMemo(() => {
     if (!stores) return null
@@ -182,6 +195,7 @@ export default function App() {
         stores={filteredStores}
         user={user}
         lang={lang}
+        theme={theme}
         heatOpacity={heatOpacity}
         minDistance={minDistance}
         maxDistance={maxDistance}
@@ -244,6 +258,15 @@ export default function App() {
             aria-label={t(lang, 'switchLang')}
           >
             {lang === 'en' ? 'FR' : 'EN'}
+          </button>
+          <button
+            className="lang-toggle-btn"
+            onClick={toggleTheme}
+            // Names the mode the click switches to, mirroring switchLang
+            aria-label={t(lang, theme === 'dark' ? 'lightMode' : 'darkMode')}
+            title={t(lang, theme === 'dark' ? 'lightMode' : 'darkMode')}
+          >
+            {theme === 'dark' ? '☀' : '☾'}
           </button>
           <button
             className="panel-toggle-btn"

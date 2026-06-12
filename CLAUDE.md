@@ -29,8 +29,19 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
 
 ## Architecture
 
-- Single map renderer: MapLibre GL JS with raster OSM tiles — no Leaflet
-  (decision #1).
+- Single map renderer: MapLibre GL JS with OpenFreeMap vector basemaps — no
+  Leaflet (decision #1). Two themes: Fiord (dark navy, `dark`) and Liberty
+  (light, `light`), URLs in `BASEMAP_URLS` in `MapView.tsx`. Theme state lives
+  in `App.tsx` like `lang`: seeded once from `prefers-color-scheme` (not
+  live-tracked), never persisted, toggled via a sun/moon button in the panel
+  title, passed to MapView as a prop. Switching calls `map.setStyle()`, which
+  wipes custom sources/layers — `addCustomLayers()` re-adds them on each
+  `style.load`, re-resolving the first symbol layer per style (Fiord
+  `water_name`, Liberty `road_one_way_arrow`) so the overlay stays below
+  labels; a `styleEpoch` counter re-runs the data effects to re-push stores /
+  overlay PNG / boundary / opacity. Camera constraints, popups, and the
+  layer-delegated click handlers survive setStyle. The boundary line is
+  theme-keyed (`BOUNDARY_LINE`): `#8888bb`/0.7 on dark, `#1a1a2e`/0.5 on light.
 - Multi-city (decision #6): all per-city facts live in `CITIES` in
   `src/cities.ts` — id, label, bbox, OSM relation / wikidata ids, Nominatim
   `countrycodes`, and a `storesFiles: Record<DataSourceId, string>` map keying
@@ -78,7 +89,7 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
   `normaliseFitness` in `fetch-stores.mjs` must stay in sync with the fitness
   tags in `src/storeTypes.ts`.
 - Always-on distance-to-nearest-store overlay (decision #3, updated
-  2026-06-11): a grid over the city bbox is coloured by proximity — red
+  2026-06-12): a grid over the city bbox is coloured by proximity — red
   at/below a min distance → orange → yellow → green → cyan → blue at/beyond a
   max distance. Both bounds are user-configurable from the "Heatmap settings"
   panel (defaults 50 m / 500 m, `HEAT_MIN_M` / `HEAT_CUTOFF_M` in
@@ -96,6 +107,9 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
   set + bbox, so they're cached (`gridCache`, keyed by the filtered
   FeatureCollection's reference) — moving a ramp slider only re-runs a cheap
   colorize (via a precomputed colour LUT) + clip + encode, never the search.
+  Ramp endpoint colours tuned for Fiord dark basemap: blue end is `[60, 100, 255]`
+  (brightened from `[20, 60, 220]` to distinguish from navy background); cyan
+  lightened to `[40, 220, 210]`. Default raster opacity is 0.65 (was 0.7).
 - The overlay is clipped to the city's administrative boundary
   (`public/data/boundary-<city>.geojson`, from `scripts/fetch-boundary.mjs`)
   via a `destination-in` composite fill on the same canvas; a thin
@@ -104,7 +118,10 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
 - Type filters work by calling `setData` with a filtered FeatureCollection;
   the distance-field overlay recomputes on the same change.
 - Individual store dots (no clustering) are shown via a `circle` layer whose
-  radius interpolates with zoom (11 → 2 px, 14 → 5 px, 16 → 7 px).
+  radius interpolates with zoom (11 → 2 px, 14 → 5 px, 16 → 7 px), with a
+  white stroke of width 2 (increased from 1.5 for contrast on the dark basemap).
+  The user-location marker is orange `#e06020` (was dark navy `#1a1a2e` which
+  was invisible on Fiord).
 - State lives in `App.tsx`; `MapView` is the only component that touches the
   MapLibre instance (via refs + effects).
 - i18n: hand-rolled, no dependency (`src/i18n.ts`). Two locales (`en`/`fr`);
@@ -116,7 +133,9 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
   persisted** (consistent with the no-storage stance), and is passed down as a
   prop; an effect mirrors it to `document.documentElement.lang`. Store-type
   labels are per-language in `STORE_TYPES` (`typeLabel(tag, lang)`);
-  `formatDistance(m, lang)` uses the locale's decimal separator. MapView popups
+  `formatDistance(m, lang)` uses the locale's decimal separator. The theme
+  toggle's aria-label/title uses the `darkMode` / `lightMode` strings (names
+  the target mode, like `switchLang`). MapView popups
   read `lang` via a ref so the once-bound click handler stays current. The panel
   children (`AddressSearch`, `FilterBar`, `ResultsPanel`) are `React.memo`'d
   with stable callbacks so ramp-slider drags don't re-render them.
@@ -130,9 +149,10 @@ fewer features than the per-dataset guard (100 for food, 50 for fitness).
 
 ## Gotchas
 
-- MapLibre mutates the style object passed to `new Map()`. Always build it
-  fresh per instance (`makeMapStyle()` in `MapView.tsx`) or the second
-  StrictMode mount gets a corrupted style.
+- MapLibre mutates the style object passed to `new Map()`. The app now passes
+  the OpenFreeMap Fiord URL string instead of an inline object, which avoids
+  this gotcha. If you ever switch back to an inline style object, build it
+  fresh per instance or the second StrictMode mount gets a corrupted style.
 - MapLibre cannot finish loading while the page is hidden/occluded (Chrome
   suspends rAF). A blank map in automated browser tests usually means
   `document.visibilityState === 'hidden'`, not an app bug.

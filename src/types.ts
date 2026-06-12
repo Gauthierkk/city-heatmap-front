@@ -27,6 +27,10 @@ export interface RankedStore {
   distance: number
 }
 
+/** Basemap theme. Seeded once from `prefers-color-scheme` at startup (not
+ *  live-tracked), never persisted — consistent with the no-storage stance. */
+export type Theme = 'light' | 'dark'
+
 /** Distance ramp defaults (decision #3): cells ≤ min show full red, cells
  *  ≥ max show full blue. Both are user-adjustable in the heatmap settings.
  *  City bounding boxes live in src/cities.ts. */

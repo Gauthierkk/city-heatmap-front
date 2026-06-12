@@ -18,13 +18,16 @@ const M_PER_DEG_LAT = 111_320
 
 // Colour ramp: equally-spaced RGB stops from full red (≤ minDist) to full
 // blue (≥ maxDist); intermediate stops scale proportionally between the two.
+// The blue endpoint was brightened from [20, 60, 220] → [60, 100, 255] so it
+// doesn't merge into Fiord's dark navy (#1a2236) basemap. The cyan step was
+// also lightened slightly ([20, 210, 200] → [40, 220, 210]) for consistency.
 const RAMP_COLORS: Array<[number, number, number]> = [
   [220,  20,  20], // red
   [230, 110,  20], // orange
   [230, 220,  20], // yellow
   [ 80, 200,  50], // green
-  [ 20, 210, 200], // cyan
-  [ 20,  60, 220], // blue
+  [ 40, 220, 210], // cyan (slightly brightened for dark basemap)
+  [ 60, 100, 255], // blue (brightened from [20,60,220] to distinguish from Fiord navy)
 ]
 const ALPHA = Math.round(0.45 * 255)
 

@@ -9,13 +9,14 @@ import { formatDistance, haversineMetres } from '../lib/distance'
 import type { Lang } from '../i18n'
 import { t } from '../i18n'
 import { STORE_TYPES, typeColor, typeLabel } from '../storeTypes'
-import type { StoreCollection, UserLocation } from '../types'
+import type { StoreCollection, Theme, UserLocation } from '../types'
 
 interface Props {
   city: CityDef
   stores: StoreCollection | null
   user: UserLocation | null
   lang: Lang
+  theme: Theme
   heatOpacity: number
   /** Ramp: cells at/below this distance (m) are full red */
   minDistance: number
@@ -45,23 +46,22 @@ const imageCoords = (
 
 const EMPTY_FC: FeatureCollection = { type: 'FeatureCollection', features: [] }
 
-// Built fresh per Map instance: MapLibre mutates the style object it is
-// given, so sharing one constant breaks the second mount under StrictMode.
-const makeMapStyle = (): maplibregl.StyleSpecification => ({
-  version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      // OSM tiles only go to z19; cap so MapLibre overzooms instead of
-      // requesting 404 tiles at higher zoom.
-      maxzoom: 19,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    },
-  },
-  layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-})
+// OpenFreeMap vector basemaps (no API key): Fiord (dark navy) and Liberty
+// (light). URL strings are not subject to MapLibre's style-object mutation
+// gotcha (the old makeMapStyle() workaround is no longer needed).
+// Attribution: both styles' sources carry OSM attribution; an explicit
+// customAttribution on the map credits OpenFreeMap on top.
+const BASEMAP_URLS: Record<Theme, string> = {
+  dark: 'https://tiles.openfreemap.org/styles/fiord',
+  light: 'https://tiles.openfreemap.org/styles/liberty',
+}
+
+// Boundary outline must read against each basemap: pale lavender on Fiord's
+// dark navy; the original dark navy line on Liberty's light ground.
+const BOUNDARY_LINE: Record<Theme, { color: string; opacity: number }> = {
+  dark: { color: '#8888bb', opacity: 0.7 },
+  light: { color: '#1a1a2e', opacity: 0.5 },
+}
 
 const typeColorExpression = [
   'match',
@@ -86,11 +86,85 @@ function popupHtml(name: string | null, shop: string, distance: number | null, l
 const BLANK_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
+// (Re-)add the app's sources + layers. Called on the initial `load` AND after
+// every theme switch: setStyle() wipes all custom sources/layers, so the
+// style.load handler re-runs this against the fresh style. Guarded against
+// double-adds (style.load can coincide with the initial load).
+// The distance-field raster and boundary line are inserted below the
+// basemap's first symbol layer — resolved per style, since Liberty's first
+// symbol layer differs from Fiord's — so street/place labels stay readable
+// above the heatmap. Store dots are added last (topmost, above labels).
+// Sources start empty/blank; the data effects (keyed on styleEpoch) re-push
+// the current overlay PNG, boundary and store data right after.
+function addCustomLayers(map: MlMap, theme: Theme) {
+  if (map.getSource('distance-field')) return
+  const firstSymbolId = map.getStyle().layers.find((l) => l.type === 'symbol')?.id
+  const boundaryLine = BOUNDARY_LINE[theme]
+
+  map.addSource('distance-field', {
+    type: 'image',
+    url: BLANK_PNG,
+    coordinates: imageCoords(DEFAULT_CITY.bounds),
+  })
+  map.addLayer(
+    {
+      id: 'distance-field-layer',
+      type: 'raster',
+      source: 'distance-field',
+      // Initial value only; the opacity effect re-applies the slider value.
+      paint: { 'raster-opacity': 0.65 },
+    },
+    firstSymbolId,
+  )
+
+  // Thin outline so the overlay's clip edge reads as intentional
+  map.addSource('boundary', { type: 'geojson', data: EMPTY_FC })
+  map.addLayer(
+    {
+      id: 'boundary-line',
+      type: 'line',
+      source: 'boundary',
+      paint: {
+        'line-color': boundaryLine.color,
+        'line-width': 1.5,
+        'line-opacity': boundaryLine.opacity,
+      },
+    },
+    firstSymbolId,
+  )
+
+  map.addSource('stores', {
+    type: 'geojson',
+    data: EMPTY_FC,
+    promoteId: 'id',
+  })
+  // No beforeId: dots render above everything, labels included. They are
+  // small and popup-labelled, so sitting above text is acceptable and keeps
+  // them visible on both basemaps (white stroke works on dark and light).
+  map.addLayer({
+    id: 'store-points',
+    type: 'circle',
+    source: 'stores',
+    paint: {
+      'circle-color': typeColorExpression,
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        11, 2,
+        14, 5,
+        16, 7,
+      ],
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#ffffff',
+    },
+  })
+}
+
 export default function MapView({
   city,
   stores,
   user,
   lang,
+  theme,
   heatOpacity,
   minDistance,
   maxDistance,
@@ -103,12 +177,19 @@ export default function MapView({
   const userMarkerRef = useRef<Marker | null>(null)
   const userRef = useRef<UserLocation | null>(null)
   const langRef = useRef<Lang>(lang)
+  const themeRef = useRef<Theme>(theme)
   const popupRef = useRef<Popup | null>(null)
   const [mapReady, setMapReady] = useState(false)
+  // Bumped after every style (re)load once the custom layers are back; the
+  // data effects below depend on it so they re-push the current store data,
+  // boundary, overlay PNG and opacity into the freshly re-added sources.
+  // 0 = not ready yet.
+  const [styleEpoch, setStyleEpoch] = useState(0)
   userRef.current = user
   // Read by the click handler bound once at map load, so popups follow the
   // current language without rebinding the listener.
   langRef.current = lang
+  themeRef.current = theme
 
   // Open a single popup at a time — replacing any previous one — so clicks and
   // results-panel selections don't accumulate stacked popups.
@@ -117,69 +198,33 @@ export default function MapView({
     popupRef.current = new Popup({ offset: 10 }).setLngLat([lng, lat]).setHTML(html).addTo(map)
   }
 
-  // Initialise the map once
+  // Initialise the map once (initial theme via ref; theme switches are
+  // handled by the setStyle effect below, never by re-creating the map)
   useEffect(() => {
     if (!containerRef.current) return
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: makeMapStyle(),
+      style: BASEMAP_URLS[themeRef.current],
       // The city-framing effect below applies the real per-city camera and
       // navigation clip once the map is ready
       bounds: lngLatBounds(DEFAULT_CITY.bounds),
       fitBoundsOptions: { padding: 20 },
-      // OSM raster tiles don't carry useful Expires headers; skip the periodic
-      // re-fetch/re-decode of already-loaded tiles.
-      refreshExpiredTiles: false,
+      attributionControl: {
+        // Both OpenFreeMap styles carry OSM attribution in their sources; we
+        // add OpenFreeMap explicitly to satisfy both license requirements.
+        customAttribution: '© <a href="https://openfreemap.org">OpenFreeMap</a>',
+      },
     })
     map.addControl(new maplibregl.NavigationControl(), 'bottom-right')
     mapRef.current = map
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__map = map
 
     map.on('load', () => {
-      // Distance-field raster (always visible, updated on filter/ramp change)
-      map.addSource('distance-field', {
-        type: 'image',
-        url: BLANK_PNG,
-        coordinates: imageCoords(DEFAULT_CITY.bounds),
-      })
-      map.addLayer({
-        id: 'distance-field-layer',
-        type: 'raster',
-        source: 'distance-field',
-        paint: { 'raster-opacity': 0.7 },
-      })
+      addCustomLayers(map, themeRef.current)
 
-      // Thin outline so the overlay's clip edge reads as intentional
-      map.addSource('boundary', { type: 'geojson', data: EMPTY_FC })
-      map.addLayer({
-        id: 'boundary-line',
-        type: 'line',
-        source: 'boundary',
-        paint: { 'line-color': '#1a1a2e', 'line-width': 1.5, 'line-opacity': 0.5 },
-      })
-
-      map.addSource('stores', {
-        type: 'geojson',
-        data: EMPTY_FC,
-        promoteId: 'id',
-      })
-      map.addLayer({
-        id: 'store-points',
-        type: 'circle',
-        source: 'stores',
-        paint: {
-          'circle-color': typeColorExpression,
-          'circle-radius': [
-            'interpolate', ['linear'], ['zoom'],
-            11, 2,
-            14, 5,
-            16, 7,
-          ],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#ffffff',
-        },
-      })
-
+      // Layer-delegated handlers, bound once: MapLibre keys them by layer id
+      // and re-matches at event time, so they keep working after setStyle()
+      // re-adds the store-points layer on a theme switch.
       map.on('click', 'store-points', (e) => {
         const feature = e.features?.[0]
         if (!feature) return
@@ -193,14 +238,34 @@ export default function MapView({
       map.on('mouseleave', 'store-points', () => (map.getCanvas().style.cursor = ''))
 
       setMapReady(true)
+      setStyleEpoch((e) => e + 1)
     })
 
     return () => {
       map.remove()
       mapRef.current = null
       setMapReady(false)
+      setStyleEpoch(0)
     }
   }, [])
+
+  // Theme switch: setStyle() replaces the whole style and WIPES our custom
+  // sources/layers, so re-add them once the new style is in and bump
+  // styleEpoch to re-push the data. Camera constraints (minZoom/maxBounds)
+  // are map-level and survive; the user marker and popups are DOM overlays
+  // and survive too.
+  const appliedThemeRef = useRef<Theme>(theme)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    if (appliedThemeRef.current === theme) return
+    appliedThemeRef.current = theme
+    map.setStyle(BASEMAP_URLS[theme])
+    map.once('style.load', () => {
+      addCustomLayers(map, theme)
+      setStyleEpoch((e) => e + 1)
+    })
+  }, [theme, mapReady])
 
   // City framing + navigation clip: contain-fit the whole city, lock max
   // zoom-out to exactly that view (minZoom = fitted zoom), and use the
@@ -238,31 +303,39 @@ export default function MapView({
     }
   }, [city, mapReady])
 
-  // Keep store markers in sync with the (filtered) store list
+  // Keep store markers in sync with the (filtered) store list.
+  // styleEpoch (not mapReady) so the data is re-pushed after a theme switch.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady) return
+    if (!map || styleEpoch === 0) return
     const source = map.getSource('stores') as maplibregl.GeoJSONSource | undefined
     source?.setData((stores ?? EMPTY_FC) as FeatureCollection)
-  }, [stores, mapReady])
+  }, [stores, styleEpoch])
 
   // Recompute the distance-field overlay when filters or ramp bounds change.
   // Only ramp-slider drags are debounced (they fire continuously and now only
   // trigger a cheap recolor of the cached grid); city/filter/boundary changes
   // apply immediately. Waits for the boundary fetch to settle (undefined) so
   // the first render is already clipped; null = fetch failed, render unclipped.
-  const overlayDepsRef = useRef<{ stores: unknown; city: unknown; boundary: unknown }>({
-    stores: undefined,
-    city: undefined,
-    boundary: undefined,
-  })
+  const overlayDepsRef = useRef<{
+    stores: unknown
+    city: unknown
+    boundary: unknown
+    epoch: number
+  }>({ stores: undefined, city: undefined, boundary: undefined, epoch: 0 })
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady || boundary === undefined) return
+    if (!map || styleEpoch === 0 || boundary === undefined) return
 
     const prev = overlayDepsRef.current
-    const onlyRamp = prev.stores === stores && prev.city === city && prev.boundary === boundary
-    overlayDepsRef.current = { stores, city, boundary }
+    // A styleEpoch bump (theme switch) must render immediately — the re-added
+    // source holds BLANK_PNG — so it is never treated as a ramp-only change.
+    const onlyRamp =
+      prev.stores === stores &&
+      prev.city === city &&
+      prev.boundary === boundary &&
+      prev.epoch === styleEpoch
+    overlayDepsRef.current = { stores, city, boundary, epoch: styleEpoch }
 
     const render = () => {
       const source = map.getSource('distance-field') as maplibregl.ImageSource | undefined
@@ -281,19 +354,19 @@ export default function MapView({
       return () => window.clearTimeout(timer)
     }
     render()
-  }, [stores, city, minDistance, maxDistance, boundary, mapReady])
+  }, [stores, city, minDistance, maxDistance, boundary, styleEpoch])
 
   // Boundary outline
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady) return
+    if (!map || styleEpoch === 0) return
     const source = map.getSource('boundary') as maplibregl.GeoJSONSource | undefined
     if (!source) return
     const data: Feature | FeatureCollection = boundary
       ? { type: 'Feature', properties: {}, geometry: boundary }
       : EMPTY_FC
     source.setData(data)
-  }, [boundary, mapReady])
+  }, [boundary, styleEpoch])
 
   // User pin + camera. On a genuine address clear (prev user → null) reset to
   // the city view; on a city switch the framing effect already reframes, so
@@ -305,7 +378,9 @@ export default function MapView({
     userMarkerRef.current?.remove()
     userMarkerRef.current = null
     if (user) {
-      userMarkerRef.current = new Marker({ color: '#1a1a2e', scale: 1.1 })
+      // Warm orange (was #1a1a2e dark navy, invisible on Fiord) — reads on
+      // both the dark Fiord and light Liberty basemaps, so not theme-keyed.
+      userMarkerRef.current = new Marker({ color: '#e06020', scale: 1.1 })
         .setLngLat([user.lng, user.lat])
         .addTo(map)
       map.flyTo({ center: [user.lng, user.lat], zoom: 14 })
@@ -315,12 +390,13 @@ export default function MapView({
     prevUserRef.current = user
   }, [user, city, mapReady])
 
-  // Distance-field opacity slider
+  // Distance-field opacity slider (re-applied after theme switches too,
+  // since the re-added layer starts at the hardcoded initial opacity)
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady || !map.getLayer('distance-field-layer')) return
+    if (!map || styleEpoch === 0 || !map.getLayer('distance-field-layer')) return
     map.setPaintProperty('distance-field-layer', 'raster-opacity', heatOpacity)
-  }, [heatOpacity, mapReady])
+  }, [heatOpacity, styleEpoch])
 
   // Pan to a store selected from the results list and open its popup
   useEffect(() => {

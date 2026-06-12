@@ -23,6 +23,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     cityAria: 'City',
     categoryAria: 'Category',
     switchLang: 'Passer en français', // names the target language, in that language
+    darkMode: 'Dark mode', // theme toggle names the target mode
+    lightMode: 'Light mode',
     minimizePanel: 'Minimize panel',
     expandPanel: 'Expand panel',
     loadError: 'Could not load map data: {msg}',
@@ -52,6 +54,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     cityAria: 'Ville',
     categoryAria: 'Catégorie',
     switchLang: 'Switch to English',
+    darkMode: 'Mode sombre',
+    lightMode: 'Mode clair',
     minimizePanel: 'Réduire le panneau',
     expandPanel: 'Déplier le panneau',
     loadError: 'Impossible de charger les données : {msg}',
