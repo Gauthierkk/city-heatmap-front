@@ -1,7 +1,9 @@
-# Paris Grocery Heatmap
+# Grocery Heatmap
 
-Interactive map of grocery stores in Paris with a proximity heatmap: enter
-your address and see which stores are closest, filtered by store type.
+Interactive map of switchable business categories — grocery stores, specialty
+food shops, and fitness venues — across Paris, NYC, and Austin, with a
+proximity heatmap: enter your address and see which places are closest,
+filtered by type.
 
 Built with React, Vite, TypeScript and MapLibre GL JS. Store data ©
 [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL),
@@ -17,11 +19,14 @@ npm run dev        # http://localhost:5173
 ## Refreshing store data
 
 ```bash
-npm run fetch-stores
+npm run fetch-stores                    # food data for Paris (default)
+npm run fetch-stores -- nyc             # food data for NYC
+npm run fetch-stores -- paris fitness   # fitness data for Paris
 ```
 
-Regenerates `public/data/stores.geojson` from Overpass (Paris proper, 12
-grocery-related shop types). Intended to be run weekly.
+Regenerates `public/data/stores-<city>.geojson` (food) or
+`public/data/fitness-<city>.geojson` (fitness) from Overpass. Intended to be
+run weekly; commit the result.
 
 ## Docs
 

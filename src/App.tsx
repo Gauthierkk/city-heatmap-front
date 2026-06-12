@@ -5,9 +5,16 @@ import AddressSearch from './components/AddressSearch'
 import FilterBar from './components/FilterBar'
 import MapView from './components/MapView'
 import ResultsPanel from './components/ResultsPanel'
-import { type Lang, detectLang, locale, t, titleParts } from './i18n'
+import { type Lang, detectLang, locale, t, titleSegments } from './i18n'
 import { haversineMetres } from './lib/distance'
-import { ALL_TAGS } from './storeTypes'
+import {
+  CATEGORIES,
+  DEFAULT_CATEGORY,
+  categoryById,
+  tagsForCategory,
+  typesForCategory,
+  type CategoryId,
+} from './storeTypes'
 import type { RankedStore, StoreCollection, UserLocation } from './types'
 import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M } from './types'
 
@@ -39,16 +46,22 @@ function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
 
 export default function App() {
   const [cityId, setCityId] = useState(DEFAULT_CITY.id)
+  const [categoryId, setCategoryId] = useState<CategoryId>(DEFAULT_CATEGORY.id)
   const [lang, setLang] = useState<Lang>(detectLang)
   const [panelExpanded, setPanelExpanded] = useState(true)
-  // Per-city caches: fetched once, kept across switches
-  const [storesByCity, setStoresByCity] = useState<Record<string, StoreCollection>>({})
+  // Per-source-file caches: keyed by the GeoJSON path, fetched once per session.
+  // Grocery and Specialty share the food file; Fitness has its own per-city file.
+  // This data-loading boundary is slated to move into a dedicated worker later;
+  // keep it self-contained so the swap stays local to these two effects.
+  const [storesBySource, setStoresBySource] = useState<Record<string, StoreCollection>>({})
   const [boundaryByCity, setBoundaryByCity] = useState<
     Record<string, Polygon | MultiPolygon | null>
   >({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [user, setUser] = useState<UserLocation | null>(null)
-  const [activeTags, setActiveTags] = useState<Set<string>>(new Set(ALL_TAGS))
+  const [activeTags, setActiveTags] = useState<Set<string>>(
+    new Set(tagsForCategory(DEFAULT_CATEGORY.id)),
+  )
   const [heatOpacity, setHeatOpacity] = useState(0.7)
   const [minDistance, setMinDistance] = useState(HEAT_MIN_M)
   const [maxDistance, setMaxDistance] = useState(HEAT_CUTOFF_M)
@@ -60,23 +73,23 @@ export default function App() {
   }, [lang])
 
   const city = cityById(cityId)
-  const stores = storesByCity[city.id] ?? null
+  const category = categoryById(categoryId)
+  const categoryTypes = typesForCategory(categoryId)
+  const sourceFile = city.storesFiles[category.source]
+  const stores = storesBySource[sourceFile] ?? null
   // undefined = still loading, null = unavailable (overlay renders unclipped)
   const boundary = city.id in boundaryByCity ? boundaryByCity[city.id] : undefined
 
-  // Static per-city fetch + session cache. This data-loading boundary is
-  // slated to move into a dedicated worker later; keep it self-contained so
-  // the swap stays local to these two effects.
   useEffect(() => {
-    if (storesByCity[city.id]) return
+    if (storesBySource[sourceFile]) return
     let cancelled = false
-    fetch(`${import.meta.env.BASE_URL}${city.storesFile}`)
+    fetch(`${import.meta.env.BASE_URL}${sourceFile}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
       .then((data: StoreCollection) => {
-        if (!cancelled) setStoresByCity((prev) => ({ ...prev, [city.id]: data }))
+        if (!cancelled) setStoresBySource((prev) => ({ ...prev, [sourceFile]: data }))
       })
       .catch((err) => {
         // Store the raw message; the localized prefix is applied at render time.
@@ -85,7 +98,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [city, storesByCity])
+  }, [sourceFile, storesBySource])
 
   // City admin boundary for clipping the overlay; fail soft to unclipped
   useEffect(() => {
@@ -115,6 +128,15 @@ export default function App() {
     setLoadError(null)
   }
 
+  function switchCategory(id: string) {
+    if (id === categoryId) return
+    setCategoryId(id as CategoryId)
+    setActiveTags(new Set(tagsForCategory(id as CategoryId)))
+    setFocusedStoreId(null)
+    setLoadError(null)
+    // user / address intentionally kept — results re-rank to the new category
+  }
+
   // Stable identities so memoised panel children don't re-render on slider drags.
   const handleTagsChange = useCallback((next: Set<string>) => {
     setActiveTags((prev) => (sameTagSet(prev, next) ? prev : next))
@@ -129,6 +151,14 @@ export default function App() {
       features: stores.features.filter((f) => activeTags.has(f.properties.shop)),
     }
   }, [stores, activeTags])
+
+  // Count of features in the loaded file that belong to the active category —
+  // used for the hint so Grocery doesn't show the full food-file count.
+  const categoryTagSet = useMemo(() => new Set(tagsForCategory(categoryId)), [categoryId])
+  const categoryTotal = useMemo(() => {
+    if (!stores) return 0
+    return stores.features.filter((f) => categoryTagSet.has(f.properties.shop)).length
+  }, [stores, categoryTagSet])
 
   const ranked: RankedStore[] = useMemo(() => {
     if (!filteredStores || !user) return []
@@ -161,28 +191,53 @@ export default function App() {
       />
       <div className="panel">
         <h1 className="panel-title">
-          {/* The title template places the city <select> at its {city} slot:
-              English leads with the city, French trails it. The hidden sizer
-              span shrinks the select to the chosen label exactly. */}
-          {titleParts(lang)[0]}
-          <span className="city-select-wrap">
-            <select
-              className="city-select"
-              value={city.id}
-              aria-label={t(lang, 'cityAria')}
-              onChange={(e) => switchCity(e.target.value)}
-            >
-              {CITIES.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-            <span className="city-select-sizer" aria-hidden="true">
-              {city.label}
-            </span>
-          </span>
-          {titleParts(lang)[1]}
+          {/* The title template places two <select>s at {city} and {category}.
+              English leads with city, French trails it. The hidden sizer span
+              shrinks each select to its chosen label width exactly. */}
+          {titleSegments(lang).map((seg, i) => {
+            if (seg.kind === 'text') return <span key={i}>{seg.value}</span>
+            if (seg.slot === 'city') {
+              return (
+                <span key="city" className="city-select-wrap">
+                  <select
+                    className="city-select"
+                    value={city.id}
+                    aria-label={t(lang, 'cityAria')}
+                    onChange={(e) => switchCity(e.target.value)}
+                  >
+                    {CITIES.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="city-select-sizer" aria-hidden="true">
+                    {city.label}
+                  </span>
+                </span>
+              )
+            }
+            // seg.slot === 'category'
+            return (
+              <span key="category" className="city-select-wrap">
+                <select
+                  className="city-select"
+                  value={category.id}
+                  aria-label={t(lang, 'categoryAria')}
+                  onChange={(e) => switchCategory(e.target.value)}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label[lang]}
+                    </option>
+                  ))}
+                </select>
+                <span className="city-select-sizer" aria-hidden="true">
+                  {category.label[lang]}
+                </span>
+              </span>
+            )
+          })}
           <button
             className="lang-toggle-btn"
             onClick={() => setLang((l) => (l === 'en' ? 'fr' : 'en'))}
@@ -209,7 +264,7 @@ export default function App() {
               onClear={clearUser}
             />
             {loadError && <p className="error">{t(lang, 'loadError', { msg: loadError })}</p>}
-            <FilterBar activeTags={activeTags} lang={lang} onChange={handleTagsChange} />
+            <FilterBar types={categoryTypes} activeTags={activeTags} lang={lang} onChange={handleTagsChange} />
             <div className="heatmap-settings">
               <h2>{t(lang, 'heatmapSettings')}</h2>
               <label className="opacity-control">
@@ -248,7 +303,7 @@ export default function App() {
             {user && <ResultsPanel ranked={ranked} lang={lang} onSelect={setFocusedStoreId} />}
             {!user && stores && (
               <p className="hint">
-                {t(lang, 'hint', { n: stores.features.length.toLocaleString(locale(lang)) })}
+                {t(lang, 'hint', { n: categoryTotal.toLocaleString(locale(lang)) })}
               </p>
             )}
           </>
