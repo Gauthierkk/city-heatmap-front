@@ -13,7 +13,7 @@ export interface CityDef {
   /** Bbox: distance-field grid extent, default map view, and the max pan
    *  clip (maxBounds gets a small margin added in MapView) */
   bounds: CityBounds
-  /** OSM admin boundary relation (see scripts/fetch-boundary.mjs) */
+  /** OSM admin boundary relation (consumed by the city-heatmap-data worker) */
   osmRelation: number
   wikidata: string
   /** Nominatim countrycodes restriction for address search */
@@ -32,8 +32,8 @@ export const CITIES: CityDef[] = [
     osmRelation: 71525,
     wikidata: 'Q90',
     countryCodes: 'fr',
-    storesFiles: { food: 'data/stores-paris.geojson', fitness: 'data/fitness-paris.geojson' },
-    boundaryFile: 'data/boundary-paris.geojson',
+    storesFiles: { food: 'data/paris/food.geojson', fitness: 'data/paris/fitness.geojson' },
+    boundaryFile: 'data/paris/boundary.geojson',
   },
   {
     id: 'nyc',
@@ -43,8 +43,8 @@ export const CITIES: CityDef[] = [
     osmRelation: 175905,
     wikidata: 'Q60',
     countryCodes: 'us',
-    storesFiles: { food: 'data/stores-nyc.geojson', fitness: 'data/fitness-nyc.geojson' },
-    boundaryFile: 'data/boundary-nyc.geojson',
+    storesFiles: { food: 'data/nyc/food.geojson', fitness: 'data/nyc/fitness.geojson' },
+    boundaryFile: 'data/nyc/boundary.geojson',
   },
   {
     id: 'austin',
@@ -56,8 +56,8 @@ export const CITIES: CityDef[] = [
     osmRelation: 113314,
     wikidata: 'Q16559',
     countryCodes: 'us',
-    storesFiles: { food: 'data/stores-austin.geojson', fitness: 'data/fitness-austin.geojson' },
-    boundaryFile: 'data/boundary-austin.geojson',
+    storesFiles: { food: 'data/austin/food.geojson', fitness: 'data/austin/fitness.geojson' },
+    boundaryFile: 'data/austin/boundary.geojson',
   },
 ]
 

@@ -11,7 +11,7 @@ export interface CategoryDef {
 }
 
 export interface StoreTypeDef {
-  /** OSM `shop=` tag value (after fetch-stores.mjs normalisation).
+  /** OSM `shop=` tag value (after the city-heatmap-data worker's normalisation).
    *  Fitness features deliberately reuse this key (`shop: 'yoga'` etc.) so
    *  StoreProperties, MapView expressions, and distanceField.ts need no edits. */
   tag: string
