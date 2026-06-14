@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
 import type { CityBounds, CityDef } from '../cities'
 import { DEFAULT_CITY } from '../cities'
+import { formatAddress } from '../lib/address'
 import { computeDistanceField } from '../lib/distanceField'
 import { formatDistance, haversineMetres } from '../lib/distance'
 import type { Lang } from '../i18n'
@@ -70,14 +71,22 @@ const typeColorExpression = [
   '#7f8c8d',
 ] as unknown as maplibregl.ExpressionSpecification
 
-function popupHtml(name: string | null, shop: string, distance: number | null, lang: Lang): string {
+function popupHtml(
+  name: string | null,
+  shop: string,
+  address: unknown,
+  distance: number | null,
+  lang: Lang,
+): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const label = typeLabel(shop, lang)
   const title = name ?? t(lang, 'unnamed', { type: label.toLowerCase() })
+  const addr = formatAddress(address)
   return `
     <div class="store-popup">
       <strong>${esc(title)}</strong>
       <div><span class="type-badge" style="background:${typeColor(shop)}">${esc(label)}</span></div>
+      ${addr ? `<div class="popup-address">${esc(addr)}</div>` : ''}
       ${distance != null ? `<div class="popup-distance">${esc(t(lang, 'fromYourAddress', { d: formatDistance(distance, lang) }))}</div>` : ''}
     </div>`
 }
@@ -231,7 +240,7 @@ export default function MapView({
         const [lng, lat] = (feature.geometry as Point).coordinates
         const u = userRef.current
         const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
-        showPopup(map, lng, lat, popupHtml(feature.properties.name ?? null, feature.properties.shop, distance, langRef.current))
+        showPopup(map, lng, lat, popupHtml(feature.properties.name ?? null, feature.properties.shop, feature.properties.address, distance, langRef.current))
       })
 
       map.on('mouseenter', 'store-points', () => (map.getCanvas().style.cursor = 'pointer'))
@@ -408,7 +417,7 @@ export default function MapView({
       const u = userRef.current
       const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
       map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16) })
-      showPopup(map, lng, lat, popupHtml(feature.properties.name, feature.properties.shop, distance, langRef.current))
+      showPopup(map, lng, lat, popupHtml(feature.properties.name, feature.properties.shop, feature.properties.address, distance, langRef.current))
     }
     onFocusHandled()
   }, [focusedStoreId, stores, mapReady, onFocusHandled])

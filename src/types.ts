@@ -1,8 +1,19 @@
+/** Postal address carried per store (decision: addresses baked into the data
+ *  by the city-heatmap-data worker). All parts are optional — coverage is
+ *  partial and varies by city. */
+export interface StoreAddress {
+  housenumber?: string
+  street?: string
+  postcode?: string
+  city?: string
+}
+
 export interface StoreProperties {
   id: string
   name: string | null
   shop: string
   source?: 'osm' | 'overture'
+  address?: StoreAddress
 }
 
 export interface StoreFeature {

@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import type { Lang } from '../i18n'
 import { t } from '../i18n'
+import { formatAddress } from '../lib/address'
 import { formatDistance } from '../lib/distance'
 import { typeColor, typeLabel } from '../storeTypes'
 import type { RankedStore } from '../types'
@@ -25,11 +26,15 @@ function ResultsPanel({ ranked, lang, onSelect }: Props) {
       <ol>
         {visible.map(({ feature, distance }) => {
           const label = typeLabel(feature.properties.shop, lang)
+          const address = formatAddress(feature.properties.address)
           return (
             <li key={feature.properties.id}>
               <button className="result-row" onClick={() => onSelect(feature.properties.id)}>
-                <span className="result-name">
-                  {feature.properties.name ?? t(lang, 'unnamed', { type: label.toLowerCase() })}
+                <span className="result-main">
+                  <span className="result-name">
+                    {feature.properties.name ?? t(lang, 'unnamed', { type: label.toLowerCase() })}
+                  </span>
+                  {address && <span className="result-address">{address}</span>}
                 </span>
                 <span
                   className="type-badge"

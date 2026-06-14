@@ -32,8 +32,8 @@ export const CITIES: CityDef[] = [
     osmRelation: 71525,
     wikidata: 'Q90',
     countryCodes: 'fr',
-    storesFiles: { food: 'data/paris/food.geojson', fitness: 'data/paris/fitness.geojson' },
-    boundaryFile: 'data/paris/boundary.geojson',
+    storesFiles: { food: 'data/places/paris/food.geojson', fitness: 'data/places/paris/fitness.geojson' },
+    boundaryFile: 'data/boundaries/paris.geojson',
   },
   {
     id: 'nyc',
@@ -43,8 +43,8 @@ export const CITIES: CityDef[] = [
     osmRelation: 175905,
     wikidata: 'Q60',
     countryCodes: 'us',
-    storesFiles: { food: 'data/nyc/food.geojson', fitness: 'data/nyc/fitness.geojson' },
-    boundaryFile: 'data/nyc/boundary.geojson',
+    storesFiles: { food: 'data/places/nyc/food.geojson', fitness: 'data/places/nyc/fitness.geojson' },
+    boundaryFile: 'data/boundaries/nyc.geojson',
   },
   {
     id: 'austin',
@@ -56,8 +56,8 @@ export const CITIES: CityDef[] = [
     osmRelation: 113314,
     wikidata: 'Q16559',
     countryCodes: 'us',
-    storesFiles: { food: 'data/austin/food.geojson', fitness: 'data/austin/fitness.geojson' },
-    boundaryFile: 'data/austin/boundary.geojson',
+    storesFiles: { food: 'data/places/austin/food.geojson', fitness: 'data/places/austin/fitness.geojson' },
+    boundaryFile: 'data/boundaries/austin.geojson',
   },
 ]
 
