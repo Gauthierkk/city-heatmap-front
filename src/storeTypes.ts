@@ -1,7 +1,7 @@
 import type { Lang } from './i18n'
 
-export type CategoryId = 'grocery' | 'specialty' | 'fitness' | 'trees'
-export type DataSourceId = 'food' | 'fitness' | 'trees'
+export type CategoryId = 'grocery' | 'specialty' | 'fitness' | 'transit' | 'trees'
+export type DataSourceId = 'food' | 'fitness' | 'transit' | 'trees'
 
 /** 'places' = labelled point data (dots + distance overlay + filters +
  *  closest-place results). 'density' = an unlabelled point cloud rendered only
@@ -36,6 +36,7 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'grocery',   label: { en: 'Grocery',        fr: 'Commerces alimentaires' }, kind: 'places',  source: 'food'    },
   { id: 'specialty', label: { en: 'Specialty Food', fr: 'Épiceries fines' },        kind: 'places',  source: 'food'    },
   { id: 'fitness',   label: { en: 'Fitness',        fr: 'Fitness' },                kind: 'places',  source: 'fitness' },
+  { id: 'transit',   label: { en: 'Transit',        fr: 'Transports' },             kind: 'places',  source: 'transit' },
   { id: 'trees',     label: { en: 'Trees',          fr: 'Arbres' },                 kind: 'density', source: 'trees'   },
 ]
 
@@ -79,6 +80,15 @@ export const STORE_TYPES: StoreTypeDef[] = [
   { tag: 'martial_arts',  label: { en: 'Martial arts & boxing', fr: 'Arts martiaux & boxe' }, color: '#2c3e50', category: 'fitness'   },
   { tag: 'dance',         label: { en: 'Dance',                fr: 'Danse' },                color: '#e84393', category: 'fitness'   },
   { tag: 'climbing',      label: { en: 'Climbing',             fr: 'Escalade' },             color: '#16a085', category: 'fitness'   },
+  // Transit modes — like fitness, reuse the `shop` key. Stations carry a
+  // `categories[]` array; the loader collapses it to one primary `shop` via
+  // TRANSIT_PRIORITY (see primaryTransitType) so the single-type model holds.
+  { tag: 'metro',         label: { en: 'Metro',                fr: 'Métro' },                color: '#2c5fb3', category: 'transit'   },
+  { tag: 'rer',           label: { en: 'RER',                  fr: 'RER' },                  color: '#d4351c', category: 'transit'   },
+  { tag: 'tram',          label: { en: 'Tram',                 fr: 'Tramway' },              color: '#1f9e5a', category: 'transit'   },
+  { tag: 'train',         label: { en: 'Train',                fr: 'Train' },                color: '#6a3d9a', category: 'transit'   },
+  { tag: 'val',           label: { en: 'VAL',                  fr: 'VAL' },                  color: '#e08e0b', category: 'transit'   },
+  { tag: 'major_station', label: { en: 'Major station',        fr: 'Grande gare' },          color: '#34495e', category: 'transit'   },
 ]
 
 // Precomputed per-category arrays — referentially stable so FilterBar's
@@ -107,4 +117,14 @@ export function typeLabel(tag: string, lang: Lang): string {
 
 export function typeColor(tag: string): string {
   return byTag.get(tag)?.color ?? '#7f8c8d'
+}
+
+// Transit stations carry a `categories[]` array (a station can be metro + RER
+// + train). To slot them into the same single-`shop` model as shops, collapse
+// the array to one primary type: the most "headline" mode wins.
+const TRANSIT_PRIORITY = ['major_station', 'train', 'rer', 'val', 'tram', 'metro']
+
+export function primaryTransitType(categories: string[]): string {
+  for (const tag of TRANSIT_PRIORITY) if (categories.includes(tag)) return tag
+  return categories[0] ?? 'metro'
 }

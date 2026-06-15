@@ -40,6 +40,7 @@ export const CITIES: CityDef[] = [
     storesFiles: {
       food: 'data/places/paris/food.geojson',
       fitness: 'data/places/paris/fitness.geojson',
+      transit: 'data/places/paris/transit.geojson',
       trees: 'data/places/paris/trees.geojson',
     },
     boundaryFile: 'data/boundaries/paris.geojson',

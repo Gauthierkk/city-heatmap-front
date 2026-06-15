@@ -11,6 +11,7 @@ import {
   CATEGORIES,
   DEFAULT_CATEGORY,
   categoryById,
+  primaryTransitType,
   tagsForCategory,
   typesForCategory,
   type CategoryId,
@@ -50,6 +51,23 @@ function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
   return geom?.type === 'Polygon' || geom?.type === 'MultiPolygon'
     ? (geom as Polygon | MultiPolygon)
     : null
+}
+
+// Transit stations ship a `categories[]` array instead of a single `shop`
+// tag. Collapse it to one primary `shop` on load so they flow through the same
+// single-type machinery as shops (filters, dots, distance overlay, ranking).
+// No-op for files that already carry `shop` (food/fitness).
+function withShopTags(data: StoreCollection): StoreCollection {
+  if (!data.features.some((f) => !f.properties.shop && Array.isArray(f.properties.categories)))
+    return data
+  return {
+    ...data,
+    features: data.features.map((f) =>
+      f.properties.shop || !Array.isArray(f.properties.categories)
+        ? f
+        : { ...f, properties: { ...f.properties, shop: primaryTransitType(f.properties.categories) } },
+    ),
+  }
 }
 
 // Tree files are a bare MultiPoint geometry, but accept a Feature/FeatureCollection
@@ -127,7 +145,7 @@ export default function App() {
         return res.json()
       })
       .then((data: StoreCollection) => {
-        if (!cancelled) setStoresBySource((prev) => ({ ...prev, [sourceFile]: data }))
+        if (!cancelled) setStoresBySource((prev) => ({ ...prev, [sourceFile]: withShopTags(data) }))
       })
       .catch((err) => {
         // Store the raw message; the localized prefix is applied at render time.

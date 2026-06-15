@@ -14,6 +14,9 @@ export interface StoreProperties {
   shop: string
   source?: 'osm' | 'overture'
   address?: StoreAddress
+  /** Transit only: all modes the station serves (metro/rer/tram/train/…).
+   *  `shop` is the primary one; this keeps the full set for the popup. */
+  categories?: string[]
 }
 
 export interface StoreFeature {

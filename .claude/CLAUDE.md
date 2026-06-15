@@ -52,20 +52,31 @@ guards, and runbook.
   Store + boundary data are fetched lazily per source file and cached in
   `App.tsx` state for the session.
 - Category registry (`src/storeTypes.ts`): `CategoryId = 'grocery' | 'specialty'
-  | 'fitness' | 'trees'`; `CATEGORIES: CategoryDef[]` (`{ id, label, kind,
-  source: DataSourceId }`). `kind` is `'places'` (grocery/specialty/fitness —
-  dots + distance overlay + filters + closest-place results) or `'density'`
-  (trees — an unlabelled point cloud rendered **only** as a green heatmap: no
-  dots, no filters, no results, no address flow). `typesForCategory(id)` and
-  `tagsForCategory(id)` return **precomputed, referentially stable** arrays
-  (empty for density) — FilterBar receives them as props and stays memo'd.
-  Grocery = 5 food types (supermarket, convenience, greengrocer, organic,
-  frozen_food); Specialty = the other 13 food types (incl. bakery); Fitness =
-  6 new types (gym, yoga, pilates, martial_arts, dance, climbing). The category
-  `<select>` is filtered per city to those with a `storesFiles[source]`, so
-  Trees only appears for Paris; switching to a city that lacks the active
-  density source falls back to the default category. `categoryById(id)` mirrors
-  `cityById` with a fallback to the default.
+  | 'fitness' | 'transit' | 'trees'`; `CATEGORIES: CategoryDef[]` (`{ id, label,
+  kind, source: DataSourceId }`). `kind` is `'places'` (grocery/specialty/
+  fitness/transit — dots + distance overlay + filters + closest-place results)
+  or `'density'` (trees — an unlabelled point cloud rendered **only** as a green
+  heatmap: no dots, no filters, no results, no address flow).
+  `typesForCategory(id)` and `tagsForCategory(id)` return **precomputed,
+  referentially stable** arrays (empty for density) — FilterBar receives them
+  as props and stays memo'd. Grocery = 5 food types (supermarket, convenience,
+  greengrocer, organic, frozen_food); Specialty = the other 13 food types
+  (incl. bakery); Fitness = 6 types (gym, yoga, pilates, martial_arts, dance,
+  climbing); Transit = 6 modes (metro, rer, tram, train, val, major_station),
+  Paris-only. The category `<select>` is filtered per city to those with a
+  `storesFiles[source]`, so Transit and Trees only appear for Paris; switching
+  to a city that lacks the active source falls back to the default category.
+  `categoryById(id)` mirrors `cityById` with a fallback to the default.
+- Transit (places category, Paris): `data/places/paris/transit.geojson` is a
+  normal store-shaped `FeatureCollection`, but each station ships a
+  `categories[]` array (a station can be metro + rer + train), not a single
+  `shop`. On load, `withShopTags` (in `App.tsx`) collapses it to one primary
+  `shop` via `primaryTransitType` / `TRANSIT_PRIORITY` (major_station > train >
+  rer > val > tram > metro) so transit flows through the **exact same**
+  single-`shop` machinery as shops (filters, dots, type colours, distance
+  overlay, closest-station ranking) with no MapView/distanceField changes. The
+  full `categories[]` is kept on `StoreProperties` for future use. Stations
+  carry no address.
 - Trees (density category): `data/places/<city>/trees.geojson` is a bare
   `MultiPoint` (just coordinates, no properties/labels) lazy-loaded per city
   into `treesByCity` in `App.tsx` (separate from the `storesBySource` pipeline,
@@ -98,10 +109,12 @@ guards, and runbook.
   store files are nested per city under `data/places/<city>/food.geojson`
   (food — serves both Grocery and Specialty, split client-side by tag set) and
   `data/places/<city>/fitness.geojson` (fitness — lazy-loaded on first
-  selection per city). `data/places/<city>/trees.geojson` (Paris only) is a
-  bare `MultiPoint` for the Trees density category (see the category registry
-  note above). `data/boundaries/<city>.geojson`, if present, is the clip
-  boundary.
+  selection per city). `data/places/paris/transit.geojson` (Paris only) is a
+  store-shaped `FeatureCollection` for the Transit category (stations carry
+  `categories[]`, collapsed to `shop` on load — see the Transit note above).
+  `data/places/<city>/trees.geojson` (Paris only) is a bare `MultiPoint` for
+  the Trees density category (see the category registry note above).
+  `data/boundaries/<city>.geojson`, if present, is the clip boundary.
   Each store feature also carries an optional `address` object (`housenumber`,
   `street`, `postcode`, `city` — all optional, partial coverage) baked in by
   the worker; it's shown in store popups and the closest-places list
