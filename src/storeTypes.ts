@@ -1,11 +1,17 @@
 import type { Lang } from './i18n'
 
-export type CategoryId = 'grocery' | 'specialty' | 'fitness'
-export type DataSourceId = 'food' | 'fitness'
+export type CategoryId = 'grocery' | 'specialty' | 'fitness' | 'trees'
+export type DataSourceId = 'food' | 'fitness' | 'trees'
+
+/** 'places' = labelled point data (dots + distance overlay + filters +
+ *  closest-place results). 'density' = an unlabelled point cloud rendered only
+ *  as a heatmap (Trees): no dots, no filters, no results. */
+export type CategoryKind = 'places' | 'density'
 
 export interface CategoryDef {
   id: CategoryId
   label: Record<Lang, string>
+  kind: CategoryKind
   /** Which GeoJSON file backs this category (per city in cities.ts) */
   source: DataSourceId
 }
@@ -21,12 +27,16 @@ export interface StoreTypeDef {
   category: CategoryId
 }
 
-// Three top-level categories. Grocery and Specialty both read the food
-// GeoJSON; Fitness reads its own per-city file.
+// Top-level categories. Grocery and Specialty both read the food GeoJSON;
+// Fitness reads its own per-city file — all three are 'places' (dots +
+// distance overlay). Trees is a 'density' category: an unlabelled point cloud
+// rendered only as a heatmap, and only offered for cities that ship a trees
+// file (currently Paris).
 export const CATEGORIES: CategoryDef[] = [
-  { id: 'grocery',   label: { en: 'Grocery',       fr: 'Commerces alimentaires' }, source: 'food'    },
-  { id: 'specialty', label: { en: 'Specialty Food', fr: 'Épiceries fines' },        source: 'food'    },
-  { id: 'fitness',   label: { en: 'Fitness',        fr: 'Fitness' },                source: 'fitness' },
+  { id: 'grocery',   label: { en: 'Grocery',        fr: 'Commerces alimentaires' }, kind: 'places',  source: 'food'    },
+  { id: 'specialty', label: { en: 'Specialty Food', fr: 'Épiceries fines' },        kind: 'places',  source: 'food'    },
+  { id: 'fitness',   label: { en: 'Fitness',        fr: 'Fitness' },                kind: 'places',  source: 'fitness' },
+  { id: 'trees',     label: { en: 'Trees',          fr: 'Arbres' },                 kind: 'density', source: 'trees'   },
 ]
 
 export const DEFAULT_CATEGORY = CATEGORIES[0]

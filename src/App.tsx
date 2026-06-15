@@ -1,4 +1,4 @@
-import type { MultiPolygon, Polygon } from 'geojson'
+import type { MultiPoint, MultiPolygon, Polygon } from 'geojson'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CITIES, DEFAULT_CITY, cityById } from './cities'
 import AddressSearch from './components/AddressSearch'
@@ -52,6 +52,21 @@ function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
     : null
 }
 
+// Tree files are a bare MultiPoint geometry, but accept a Feature/FeatureCollection
+// wrapper too so the worker is free to bake either shape.
+function extractMultiPoint(data: unknown): MultiPoint | null {
+  const obj = data as {
+    type?: string
+    geometry?: { type?: string }
+    features?: Array<{ geometry?: { type?: string } }>
+  } | null
+  const geom =
+    obj?.type === 'Feature' ? obj.geometry :
+    obj?.type === 'FeatureCollection' ? obj.features?.[0]?.geometry :
+    obj
+  return geom?.type === 'MultiPoint' ? (geom as MultiPoint) : null
+}
+
 export default function App() {
   const [cityId, setCityId] = useState(DEFAULT_CITY.id)
   const [categoryId, setCategoryId] = useState<CategoryId>(DEFAULT_CATEGORY.id)
@@ -67,6 +82,8 @@ export default function App() {
   const [boundaryByCity, setBoundaryByCity] = useState<
     Record<string, Polygon | MultiPolygon | null>
   >({})
+  // Tree point cloud per city for density categories; null = unavailable.
+  const [treesByCity, setTreesByCity] = useState<Record<string, MultiPoint | null>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [user, setUser] = useState<UserLocation | null>(null)
   const [activeTags, setActiveTags] = useState<Set<string>>(
@@ -77,6 +94,9 @@ export default function App() {
   const [heatOpacity, setHeatOpacity] = useState(0.65)
   const [minDistance, setMinDistance] = useState(HEAT_MIN_M)
   const [maxDistance, setMaxDistance] = useState(HEAT_CUTOFF_M)
+  // Tree heatmap spread, a screen-pixel radius (density categories). Constant
+  // across zoom so the heatmap is always visible.
+  const [treeRadius, setTreeRadius] = useState(25)
   const [focusedStoreId, setFocusedStoreId] = useState<string | null>(null)
 
   // Reflect the UI language on <html lang> for a11y / correct hyphenation.
@@ -86,14 +106,19 @@ export default function App() {
 
   const city = cityById(cityId)
   const category = categoryById(categoryId)
+  const isDensity = category.kind === 'density'
   const categoryTypes = typesForCategory(categoryId)
-  const sourceFile = city.storesFiles[category.source]
-  const stores = storesBySource[sourceFile] ?? null
+  // Density categories (Trees) bypass the store pipeline entirely; their data
+  // is a raw point cloud loaded into treesByCity, not a StoreCollection.
+  const sourceFile = isDensity ? undefined : city.storesFiles[category.source]
+  const stores = sourceFile ? storesBySource[sourceFile] ?? null : null
   // undefined = still loading, null = unavailable (overlay renders unclipped)
   const boundary = city.id in boundaryByCity ? boundaryByCity[city.id] : undefined
+  // Tree point cloud for the active density category (null = none/loading)
+  const treePoints = isDensity ? treesByCity[city.id] ?? null : null
 
   useEffect(() => {
-    if (storesBySource[sourceFile]) return
+    if (!sourceFile || storesBySource[sourceFile]) return
     let cancelled = false
     fetch(`${import.meta.env.BASE_URL}${sourceFile}`)
       .then((res) => {
@@ -111,6 +136,33 @@ export default function App() {
       cancelled = true
     }
   }, [sourceFile, storesBySource])
+
+  // Lazy-load the tree point cloud the first time a density category is shown
+  // for a city that ships one. Mirrors the boundary fetch: cached per city,
+  // fail-soft to null (the heatmap simply doesn't render).
+  useEffect(() => {
+    if (!isDensity || city.id in treesByCity) return
+    const file = city.storesFiles[category.source]
+    if (!file) return
+    let cancelled = false
+    fetch(`${import.meta.env.BASE_URL}${file}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => {
+        if (!cancelled) setTreesByCity((prev) => ({ ...prev, [city.id]: extractMultiPoint(data) }))
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setTreesByCity((prev) => ({ ...prev, [city.id]: null }))
+          setLoadError(err.message)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isDensity, city, category.source, treesByCity])
 
   // City admin boundary for clipping the overlay; fail soft to unclipped
   useEffect(() => {
@@ -138,6 +190,12 @@ export default function App() {
     setUser(null)
     setFocusedStoreId(null)
     setLoadError(null)
+    // A density category may not exist for the new city (e.g. Trees is
+    // Paris-only) — fall back to the default category if so.
+    if (!cityById(id).storesFiles[category.source]) {
+      setCategoryId(DEFAULT_CATEGORY.id)
+      setActiveTags(new Set(tagsForCategory(DEFAULT_CATEGORY.id)))
+    }
   }
 
   function switchCategory(id: string) {
@@ -200,6 +258,8 @@ export default function App() {
         minDistance={minDistance}
         maxDistance={maxDistance}
         boundary={boundary}
+        treePoints={treePoints}
+        treeRadiusPx={treeRadius}
         focusedStoreId={focusedStoreId}
         onFocusHandled={handleFocusHandled}
       />
@@ -266,7 +326,7 @@ export default function App() {
                     aria-label={t(lang, 'categoryAria')}
                     onChange={(e) => switchCategory(e.target.value)}
                   >
-                    {CATEGORIES.map((c) => (
+                    {CATEGORIES.filter((c) => city.storesFiles[c.source]).map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label[lang]}
                       </option>
@@ -280,7 +340,29 @@ export default function App() {
             })}
           </div>
         </h1>
-        {panelExpanded && (
+        {panelExpanded && isDensity && (
+          <>
+            {city.staleData && (
+              <p className="disclaimer">{t(lang, 'dataDisclaimer', { city: city.label })}</p>
+            )}
+            {loadError && <p className="error">{t(lang, 'loadError', { msg: loadError })}</p>}
+            <p className="hint">{t(lang, 'treesHint', { city: city.label })}</p>
+            <div className="heatmap-settings">
+              <label className="opacity-control">
+                {t(lang, 'treeRadius', { n: treeRadius })}
+                <input
+                  type="range"
+                  min={10}
+                  max={50}
+                  step={5}
+                  value={treeRadius}
+                  onChange={(e) => setTreeRadius(Number(e.target.value))}
+                />
+              </label>
+            </div>
+          </>
+        )}
+        {panelExpanded && !isDensity && (
           <>
             <AddressSearch
               key={city.id}

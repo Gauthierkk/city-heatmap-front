@@ -18,8 +18,10 @@ export interface CityDef {
   wikidata: string
   /** Nominatim countrycodes restriction for address search */
   countryCodes: string
-  /** Per-source GeoJSON paths (food shared by grocery+specialty, fitness lazy-loaded) */
-  storesFiles: Record<DataSourceId, string>
+  /** Per-source GeoJSON paths (food shared by grocery+specialty, fitness
+   *  lazy-loaded). Partial: `trees` is only present for cities that ship a
+   *  tree point-cloud (currently Paris); a missing source hides that category. */
+  storesFiles: Partial<Record<DataSourceId, string>>
   boundaryFile: string
   /** When true, the data is a one-off snapshot not on the weekly refresh; the
    *  panel shows a freshness disclaimer (Paris is the maintained city). */
@@ -35,7 +37,11 @@ export const CITIES: CityDef[] = [
     osmRelation: 71525,
     wikidata: 'Q90',
     countryCodes: 'fr',
-    storesFiles: { food: 'data/places/paris/food.geojson', fitness: 'data/places/paris/fitness.geojson' },
+    storesFiles: {
+      food: 'data/places/paris/food.geojson',
+      fitness: 'data/places/paris/fitness.geojson',
+      trees: 'data/places/paris/trees.geojson',
+    },
     boundaryFile: 'data/boundaries/paris.geojson',
   },
   {

@@ -43,21 +43,46 @@ guards, and runbook.
   theme-keyed (`BOUNDARY_LINE`): `#8888bb`/0.7 on dark, `#1a1a2e`/0.5 on light.
 - Multi-city (decision #6): all per-city facts live in `CITIES` in
   `src/cities.ts` — id, label, bbox, OSM relation / wikidata ids, Nominatim
-  `countrycodes`, and a `storesFiles: Record<DataSourceId, string>` map keying
-  `'food'` and `'fitness'` paths. The city is switched via the panel title: the
+  `countrycodes`, and a `storesFiles: Partial<Record<DataSourceId, string>>` map
+  keying `'food'`, `'fitness'` and optional `'trees'` paths (trees is Paris-only;
+  a missing source hides that category for the city). The city is switched via the panel title: the
   city-name portion of the title is a `<select>` (built from the config) styled
   as heading text with a small chevron; default is Paris. City-switching clears
   the entered address/results, refits the camera, and recomputes the overlay.
   Store + boundary data are fetched lazily per source file and cached in
   `App.tsx` state for the session.
 - Category registry (`src/storeTypes.ts`): `CategoryId = 'grocery' | 'specialty'
-  | 'fitness'`; `CATEGORIES: CategoryDef[]` (`{ id, label, source: DataSourceId
-  }`). `typesForCategory(id)` and `tagsForCategory(id)` return **precomputed,
-  referentially stable** arrays — FilterBar receives them as props and stays
-  memo'd. Grocery = 5 food types (supermarket, convenience, greengrocer,
-  organic, frozen_food); Specialty = the other 13 food types (incl. bakery);
-  Fitness = 6 new types (gym, yoga, pilates, martial_arts, dance, climbing).
-  `categoryById(id)` mirrors `cityById` with a fallback to the default.
+  | 'fitness' | 'trees'`; `CATEGORIES: CategoryDef[]` (`{ id, label, kind,
+  source: DataSourceId }`). `kind` is `'places'` (grocery/specialty/fitness —
+  dots + distance overlay + filters + closest-place results) or `'density'`
+  (trees — an unlabelled point cloud rendered **only** as a green heatmap: no
+  dots, no filters, no results, no address flow). `typesForCategory(id)` and
+  `tagsForCategory(id)` return **precomputed, referentially stable** arrays
+  (empty for density) — FilterBar receives them as props and stays memo'd.
+  Grocery = 5 food types (supermarket, convenience, greengrocer, organic,
+  frozen_food); Specialty = the other 13 food types (incl. bakery); Fitness =
+  6 new types (gym, yoga, pilates, martial_arts, dance, climbing). The category
+  `<select>` is filtered per city to those with a `storesFiles[source]`, so
+  Trees only appears for Paris; switching to a city that lacks the active
+  density source falls back to the default category. `categoryById(id)` mirrors
+  `cityById` with a fallback to the default.
+- Trees (density category): `data/places/<city>/trees.geojson` is a bare
+  `MultiPoint` (just coordinates, no properties/labels) lazy-loaded per city
+  into `treesByCity` in `App.tsx` (separate from the `storesBySource` pipeline,
+  fail-soft to null like the boundary). It is pushed to a MapLibre `heatmap`
+  layer (`trees-heat` in `MapView.tsx`, below labels, hidden unless a density
+  category is active) as one Feature whose sub-points each contribute to the
+  density. The "Tree spread" slider (10–50 px, `treeRadius` state, default 25)
+  sets `heatmap-radius` as a constant **screen-pixel** radius (always visible
+  at any zoom). MapLibre can't clip a heatmap to a polygon, so the heatmap is
+  hard-clipped to the city outline by an **inverse-boundary mask** (`tree-mask`
+  fill: a world rectangle with the boundary punched out as holes,
+  `inverseMaskFeature`), filled with the basemap's background colour
+  (`basemapBackground`, read from the style's `background` layer per theme) and
+  stacked just above the heatmap and just below the `boundary-line` (which
+  covers the seam). Layer order below labels is therefore distance-field →
+  trees-heat → tree-mask → boundary-line. Density categories naturally clear
+  the places visuals because `App.tsx` passes `stores = null` for them.
 - Map navigation is clipped per city: on select, `MapView` contain-fits the
   city bbox, sets `minZoom` to the fitted zoom (minus a small epsilon), and
   sets `maxBounds` to the fitted viewport (`map.getBounds()`) — at max
@@ -71,8 +96,10 @@ guards, and runbook.
   store files are nested per city under `data/places/<city>/food.geojson`
   (food — serves both Grocery and Specialty, split client-side by tag set) and
   `data/places/<city>/fitness.geojson` (fitness — lazy-loaded on first
-  selection per city); `data/boundaries/<city>.geojson`, if present, is the
-  clip boundary.
+  selection per city). `data/places/<city>/trees.geojson` (Paris only) is a
+  bare `MultiPoint` for the Trees density category (see the category registry
+  note above). `data/boundaries/<city>.geojson`, if present, is the clip
+  boundary.
   Each store feature also carries an optional `address` object (`housenumber`,
   `street`, `postcode`, `city` — all optional, partial coverage) baked in by
   the worker; it's shown in store popups and the closest-places list

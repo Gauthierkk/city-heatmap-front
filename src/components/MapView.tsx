@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from 'geojson'
+import type { Feature, FeatureCollection, MultiPoint, MultiPolygon, Point, Polygon } from 'geojson'
 import maplibregl, { Map as MlMap, Marker, Popup } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
@@ -26,6 +26,11 @@ interface Props {
   /** City admin boundary clipping the overlay: undefined = still loading,
    *  null = unavailable (render unclipped) */
   boundary: Polygon | MultiPolygon | null | undefined
+  /** Active density category's point cloud (Trees): rendered as a heatmap,
+   *  no dots/labels. null = not a density category, or still loading. */
+  treePoints: MultiPoint | null
+  /** Tree heatmap spread as a screen-pixel radius (per-tree influence) */
+  treeRadiusPx: number
   focusedStoreId: string | null
   onFocusHandled: () => void
 }
@@ -70,6 +75,34 @@ const typeColorExpression = [
   ...STORE_TYPES.flatMap((t) => [t.tag, t.color]),
   '#7f8c8d',
 ] as unknown as maplibregl.ExpressionSpecification
+
+// MapLibre can't clip a heatmap layer to a polygon, so the tree heatmap is
+// hard-clipped to the city outline with an inverse mask: a world rectangle
+// with the boundary punched out as holes, filled with the basemap background
+// colour. It sits just above the heatmap (hiding the radius bloom that spills
+// past the outline) and just below the boundary line (which covers the seam).
+const WORLD_RING: number[][] = [
+  [-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85],
+]
+function inverseMaskFeature(boundary: Polygon | MultiPolygon): Feature {
+  const holes =
+    boundary.type === 'Polygon'
+      ? [boundary.coordinates[0]]
+      : boundary.coordinates.map((poly) => poly[0])
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'Polygon', coordinates: [WORLD_RING, ...holes] },
+  }
+}
+
+// Basemap land colour, read from the style's background layer so the mask
+// matches each theme; falls back to a per-theme constant if it isn't a literal.
+function basemapBackground(map: MlMap, theme: Theme): string {
+  const bg = map.getStyle().layers.find((l) => l.type === 'background')
+  const color = bg && map.getPaintProperty(bg.id, 'background-color')
+  return typeof color === 'string' ? color : theme === 'dark' ? '#1b1d2a' : '#f3efe9'
+}
 
 function popupHtml(
   name: string | null,
@@ -126,7 +159,53 @@ function addCustomLayers(map: MlMap, theme: Theme) {
     firstSymbolId,
   )
 
-  // Thin outline so the overlay's clip edge reads as intentional
+  // Tree density heatmap (density categories). One MultiPoint feature whose
+  // sub-points each contribute to the density; green ramp, no labels/dots.
+  // Inserted below labels and starts hidden — the data effect toggles it.
+  map.addSource('trees', { type: 'geojson', data: EMPTY_FC })
+  map.addLayer(
+    {
+      id: 'trees-heat',
+      type: 'heatmap',
+      source: 'trees',
+      layout: { visibility: 'none' },
+      paint: {
+        'heatmap-weight': 1,
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 16, 1.4],
+        // Placeholder; the treeRadiusPx effect sets the slider value.
+        'heatmap-radius': 25,
+        'heatmap-opacity': 0.85,
+        'heatmap-color': [
+          'interpolate', ['linear'], ['heatmap-density'],
+          0, 'rgba(0, 0, 0, 0)',
+          0.2, 'rgba(199, 233, 180, 0.6)',
+          0.4, 'rgba(120, 198, 121, 0.75)',
+          0.6, 'rgba(65, 171, 93, 0.85)',
+          0.8, 'rgba(35, 132, 67, 0.9)',
+          1, 'rgba(0, 90, 50, 0.95)',
+        ],
+      },
+    },
+    firstSymbolId,
+  )
+
+  // Inverse-boundary mask: hard-clips the heatmap to the city outline. Above
+  // the heatmap, below the boundary line. Starts empty/hidden; the mask effect
+  // fills it in density mode.
+  map.addSource('tree-mask', { type: 'geojson', data: EMPTY_FC })
+  map.addLayer(
+    {
+      id: 'tree-mask',
+      type: 'fill',
+      source: 'tree-mask',
+      layout: { visibility: 'none' },
+      paint: { 'fill-color': basemapBackground(map, theme), 'fill-opacity': 1 },
+    },
+    firstSymbolId,
+  )
+
+  // Thin outline so the overlay's clip edge (and the tree mask's) reads as
+  // intentional — kept topmost of the below-label layers to cover the seam.
   map.addSource('boundary', { type: 'geojson', data: EMPTY_FC })
   map.addLayer(
     {
@@ -178,6 +257,8 @@ export default function MapView({
   minDistance,
   maxDistance,
   boundary,
+  treePoints,
+  treeRadiusPx,
   focusedStoreId,
   onFocusHandled,
 }: Props) {
@@ -376,6 +457,46 @@ export default function MapView({
       : EMPTY_FC
     source.setData(data)
   }, [boundary, styleEpoch])
+
+  // Tree density heatmap: push the point cloud and show the layer only when a
+  // density category is active (treePoints set). null clears + hides it, which
+  // is also how 'places' categories leave the map free of the heatmap.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || styleEpoch === 0) return
+    const source = map.getSource('trees') as maplibregl.GeoJSONSource | undefined
+    if (!source) return
+    const data: Feature | FeatureCollection = treePoints
+      ? { type: 'Feature', properties: {}, geometry: treePoints }
+      : EMPTY_FC
+    source.setData(data)
+    if (map.getLayer('trees-heat')) {
+      map.setLayoutProperty('trees-heat', 'visibility', treePoints ? 'visible' : 'none')
+    }
+  }, [treePoints, styleEpoch])
+
+  // Inverse-boundary mask follows the heatmap: shown only when a density
+  // category is active and a boundary is loaded, so the heatmap is clipped to
+  // the city outline. Without a boundary it stays hidden (heatmap unclipped).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || styleEpoch === 0) return
+    const source = map.getSource('tree-mask') as maplibregl.GeoJSONSource | undefined
+    if (!source) return
+    const show = !!treePoints && !!boundary
+    source.setData(show ? inverseMaskFeature(boundary) : EMPTY_FC)
+    if (map.getLayer('tree-mask')) {
+      map.setLayoutProperty('tree-mask', 'visibility', show ? 'visible' : 'none')
+    }
+  }, [treePoints, boundary, styleEpoch])
+
+  // Tree heatmap spread: a constant screen-pixel radius (always visible at any
+  // zoom). Cheap GPU paint update — no debounce.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || styleEpoch === 0 || !map.getLayer('trees-heat')) return
+    map.setPaintProperty('trees-heat', 'heatmap-radius', treeRadiusPx)
+  }, [treeRadiusPx, styleEpoch])
 
   // User pin + camera. On a genuine address clear (prev user → null) reset to
   // the city view; on a city switch the framing effect already reframes, so
