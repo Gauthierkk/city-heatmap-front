@@ -289,6 +289,9 @@ export default function App() {
               onSelect={setUser}
               onClear={clearUser}
             />
+            {city.staleData && (
+              <p className="disclaimer">{t(lang, 'dataDisclaimer', { city: city.label })}</p>
+            )}
             {loadError && <p className="error">{t(lang, 'loadError', { msg: loadError })}</p>}
             <FilterBar types={categoryTypes} activeTags={activeTags} lang={lang} onChange={handleTagsChange} />
             <div className="heatmap-settings">

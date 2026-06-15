@@ -21,6 +21,9 @@ export interface CityDef {
   /** Per-source GeoJSON paths (food shared by grocery+specialty, fitness lazy-loaded) */
   storesFiles: Record<DataSourceId, string>
   boundaryFile: string
+  /** When true, the data is a one-off snapshot not on the weekly refresh; the
+   *  panel shows a freshness disclaimer (Paris is the maintained city). */
+  staleData?: boolean
 }
 
 export const CITIES: CityDef[] = [
@@ -45,6 +48,7 @@ export const CITIES: CityDef[] = [
     countryCodes: 'us',
     storesFiles: { food: 'data/places/nyc/food.geojson', fitness: 'data/places/nyc/fitness.geojson' },
     boundaryFile: 'data/boundaries/nyc.geojson',
+    staleData: true,
   },
   {
     id: 'austin',
@@ -58,6 +62,7 @@ export const CITIES: CityDef[] = [
     countryCodes: 'us',
     storesFiles: { food: 'data/places/austin/food.geojson', fitness: 'data/places/austin/fitness.geojson' },
     boundaryFile: 'data/boundaries/austin.geojson',
+    staleData: true,
   },
 ]
 

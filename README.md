@@ -25,6 +25,10 @@ local server, regenerates the data into this repo's `public/data/`, and commits
 + pushes so GitHub Pages redeploys. This repo carries no Python — see the worker
 repo's README for the fetch commands and refresh runbook.
 
+Only **Paris** is on the weekly refresh. The **NYC** and **Austin** datasets are
+one-off snapshots that are not updated regularly, so the app shows a
+data-freshness disclaimer when either is selected.
+
 ## Docs
 
 - [Product spec](docs/PRD.md)
