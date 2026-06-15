@@ -94,8 +94,9 @@ export default function App() {
   const [heatOpacity, setHeatOpacity] = useState(0.65)
   const [minDistance, setMinDistance] = useState(HEAT_MIN_M)
   const [maxDistance, setMaxDistance] = useState(HEAT_CUTOFF_M)
-  // Tree heatmap spread, a screen-pixel radius (density categories). Constant
-  // across zoom so the heatmap is always visible.
+  // Tree heatmap spread, in ground metres (density categories). Each tree's
+  // influence radius; rendered as true metres so it stays thin at city zoom
+  // and sharpens as you zoom in.
   const [treeRadius, setTreeRadius] = useState(25)
   const [focusedStoreId, setFocusedStoreId] = useState<string | null>(null)
 
@@ -259,7 +260,7 @@ export default function App() {
         maxDistance={maxDistance}
         boundary={boundary}
         treePoints={treePoints}
-        treeRadiusPx={treeRadius}
+        treeRadiusM={treeRadius}
         focusedStoreId={focusedStoreId}
         onFocusHandled={handleFocusHandled}
       />

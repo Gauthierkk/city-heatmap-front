@@ -72,9 +72,11 @@ guards, and runbook.
   fail-soft to null like the boundary). It is pushed to a MapLibre `heatmap`
   layer (`trees-heat` in `MapView.tsx`, below labels, hidden unless a density
   category is active) as one Feature whose sub-points each contribute to the
-  density. The "Tree spread" slider (10–50 px, `treeRadius` state, default 25)
-  sets `heatmap-radius` as a constant **screen-pixel** radius (always visible
-  at any zoom). MapLibre can't clip a heatmap to a polygon, so the heatmap is
+  density. The "Tree spread" slider (10–50 m, `treeRadius` state, default 25)
+  sets `heatmap-radius` in **ground metres** via a base-2 exponential zoom ramp
+  (`metresRadiusExpression`) anchored at the city-centre latitude — so the
+  radius is sub-pixel (thin) at city zoom and sharpens as you zoom in. MapLibre
+  can't clip a heatmap to a polygon, so the heatmap is
   hard-clipped to the city outline by an **inverse-boundary mask** (`tree-mask`
   fill: a world rectangle with the boundary punched out as holes,
   `inverseMaskFeature`), filled with the basemap's background colour

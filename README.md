@@ -5,7 +5,7 @@ food shops, and fitness venues — across Paris, NYC, and Austin, with a
 proximity heatmap: enter your address and see which places are closest,
 filtered by type. Paris additionally offers a **Trees** category: an
 unlabelled street-tree density heatmap (clipped to the city outline) with an
-adjustable spread.
+adjustable spread (10–50 m).
 
 Built with React, Vite, TypeScript and MapLibre GL JS. Store data ©
 [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL),

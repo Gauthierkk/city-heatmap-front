@@ -29,8 +29,8 @@ interface Props {
   /** Active density category's point cloud (Trees): rendered as a heatmap,
    *  no dots/labels. null = not a density category, or still loading. */
   treePoints: MultiPoint | null
-  /** Tree heatmap spread as a screen-pixel radius (per-tree influence) */
-  treeRadiusPx: number
+  /** Tree heatmap spread in ground metres (per-tree influence radius) */
+  treeRadiusM: number
   focusedStoreId: string | null
   onFocusHandled: () => void
 }
@@ -94,6 +94,24 @@ function inverseMaskFeature(boundary: Polygon | MultiPolygon): Feature {
     properties: {},
     geometry: { type: 'Polygon', coordinates: [WORLD_RING, ...holes] },
   }
+}
+
+// MapLibre's heatmap-radius is in screen pixels. To pin it to a fixed ground
+// distance, anchor a base-2 exponential zoom interpolation: metres-per-pixel
+// halves each zoom level, so a base-2 ramp keeps the radius a constant number
+// of ground metres at every zoom (sub-pixel when zoomed out, growing as you
+// zoom in). Scale is taken at the city-centre latitude (Web Mercator).
+function metresRadiusExpression(
+  metres: number,
+  lat: number,
+): maplibregl.ExpressionSpecification {
+  const metresPerPixel = (zoom: number) =>
+    (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom
+  return [
+    'interpolate', ['exponential', 2], ['zoom'],
+    0, metres / metresPerPixel(0),
+    24, metres / metresPerPixel(24),
+  ] as unknown as maplibregl.ExpressionSpecification
 }
 
 // Basemap land colour, read from the style's background layer so the mask
@@ -172,8 +190,8 @@ function addCustomLayers(map: MlMap, theme: Theme) {
       paint: {
         'heatmap-weight': 1,
         'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 16, 1.4],
-        // Placeholder; the treeRadiusPx effect sets the slider value.
-        'heatmap-radius': 25,
+        // Placeholder; the treeRadiusM effect replaces this with a metres ramp.
+        'heatmap-radius': 4,
         'heatmap-opacity': 0.85,
         'heatmap-color': [
           'interpolate', ['linear'], ['heatmap-density'],
@@ -258,7 +276,7 @@ export default function MapView({
   maxDistance,
   boundary,
   treePoints,
-  treeRadiusPx,
+  treeRadiusM,
   focusedStoreId,
   onFocusHandled,
 }: Props) {
@@ -490,13 +508,15 @@ export default function MapView({
     }
   }, [treePoints, boundary, styleEpoch])
 
-  // Tree heatmap spread: a constant screen-pixel radius (always visible at any
-  // zoom). Cheap GPU paint update — no debounce.
+  // Tree heatmap spread: convert the metres slider to a ground-metres radius
+  // ramp at the city-centre latitude (sub-pixel at city zoom, sharpens as you
+  // zoom in). Cheap GPU paint update — no debounce.
   useEffect(() => {
     const map = mapRef.current
     if (!map || styleEpoch === 0 || !map.getLayer('trees-heat')) return
-    map.setPaintProperty('trees-heat', 'heatmap-radius', treeRadiusPx)
-  }, [treeRadiusPx, styleEpoch])
+    const lat = (city.bounds.minLat + city.bounds.maxLat) / 2
+    map.setPaintProperty('trees-heat', 'heatmap-radius', metresRadiusExpression(treeRadiusM, lat))
+  }, [treeRadiusM, city, styleEpoch])
 
   // User pin + camera. On a genuine address clear (prev user → null) reset to
   // the city view; on a city switch the framing effect already reframes, so
