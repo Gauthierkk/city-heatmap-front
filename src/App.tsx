@@ -10,6 +10,7 @@ import { haversineMetres } from './lib/distance'
 import {
   CATEGORIES,
   DEFAULT_CATEGORY,
+  MAJOR_STATION_TAG,
   categoryById,
   primaryTransitType,
   tagsForCategory,
@@ -62,19 +63,22 @@ function storeTags(p: StoreProperties): string[] {
 }
 
 // Transit stations ship a `categories[]` array instead of a single `shop`
-// tag. Collapse it to one primary `shop` on load so they flow through the same
-// single-type machinery as shops (filters, dots, distance overlay, ranking).
+// tag. On load, derive a primary `shop` so they flow through the same
+// single-type machinery as shops, and split out `major_station` — it's a size
+// flag (`major`), not a mode, so it's dropped from the modes used as tags.
 // No-op for files that already carry `shop` (food/fitness).
 function withShopTags(data: StoreCollection): StoreCollection {
   if (!data.features.some((f) => !f.properties.shop && Array.isArray(f.properties.categories)))
     return data
   return {
     ...data,
-    features: data.features.map((f) =>
-      f.properties.shop || !Array.isArray(f.properties.categories)
-        ? f
-        : { ...f, properties: { ...f.properties, shop: primaryTransitType(f.properties.categories) } },
-    ),
+    features: data.features.map((f) => {
+      const p = f.properties
+      if (p.shop || !Array.isArray(p.categories)) return f
+      const major = p.categories.includes(MAJOR_STATION_TAG)
+      const modes = p.categories.filter((c) => c !== MAJOR_STATION_TAG)
+      return { ...f, properties: { ...p, categories: modes, shop: primaryTransitType(modes), major } }
+    }),
   }
 }
 

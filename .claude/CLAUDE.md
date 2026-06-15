@@ -62,8 +62,9 @@ guards, and runbook.
   as props and stays memo'd. Grocery = 5 food types (supermarket, convenience,
   greengrocer, organic, frozen_food); Specialty = the other 13 food types
   (incl. bakery); Fitness = 6 types (gym, yoga, pilates, martial_arts, dance,
-  climbing); Transit = 6 modes (metro, rer, tram, train, val, major_station),
-  Paris-only. The category `<select>` is filtered per city to those with a
+  climbing); Transit = 5 modes (metro, rer, tram, train, val), Paris-only —
+  `major_station` is a size flag, not a mode (see below). The category
+  `<select>` is filtered per city to those with a
   `storesFiles[source]`, so Transit and Trees only appear for Paris; switching
   to a city that lacks the active source falls back to the default category.
   `categoryById(id)` mirrors `cityById` with a fallback to the default.
@@ -71,15 +72,18 @@ guards, and runbook.
   normal store-shaped `FeatureCollection`, but each station ships a
   `categories[]` array (a station can be metro + rer + train), not a single
   `shop`. On load, `withShopTags` (in `App.tsx`) sets a primary `shop` via
-  `primaryTransitType` / `TRANSIT_PRIORITY` (major_station > train > rer > val >
-  tram > metro) — used for the dot colour, type label and unnamed-fallback — but
-  the full `categories[]` is kept. **Multi-tag**: `storeTags(props)` returns
-  `categories` when present (else `[shop]`), and both the type-filter and the
-  category count match a feature if **any** of its tags is active, so a hub
-  shows under every mode it serves. The popup renders one badge per tag
-  (`parseCategories` un-stringifies the array MapLibre serialises on map
-  clicks); the closest-list row keeps just the primary badge for compactness.
-  No MapView/distanceField changes beyond the popup. Stations carry no address.
+  `primaryTransitType` / `TRANSIT_PRIORITY` (train > rer > val > tram > metro) —
+  used for the dot colour, type label and unnamed-fallback — but the full
+  `categories[]` is kept. `major_station` is split out into a boolean `major`
+  flag (`MAJOR_STATION_TAG`) and **removed** from `categories`: it's not a
+  mode/tag, just a size cue — `store-points` draws `major` hubs at **double
+  radius** (`['case', ['==', ['get','major'], true], …]`). **Multi-tag**:
+  `storeTags(props)` returns `categories` when present (else `[shop]`), and both
+  the type-filter and the category count match a feature if **any** of its tags
+  is active, so a hub shows under every mode it serves. The popup renders one
+  badge per tag (`parseCategories` un-stringifies the array MapLibre serialises
+  on map clicks); the closest-list row keeps just the primary badge for
+  compactness. No distanceField changes. Stations carry no address.
 - Trees (density category): `data/places/<city>/trees.geojson` is a bare
   `MultiPoint` (just coordinates, no properties/labels) lazy-loaded per city
   into `treesByCity` in `App.tsx` (separate from the `storesBySource` pipeline,

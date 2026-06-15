@@ -17,6 +17,9 @@ export interface StoreProperties {
   /** Transit only: all modes the station serves (metro/rer/tram/train/…).
    *  `shop` is the primary one; this keeps the full set for the popup. */
   categories?: string[]
+  /** Transit only: a major hub (Paris gare) — rendered as a double-size dot,
+   *  not a filterable mode. Derived on load from the `major_station` tag. */
+  major?: boolean
 }
 
 export interface StoreFeature {

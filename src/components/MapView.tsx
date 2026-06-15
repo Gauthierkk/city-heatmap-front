@@ -275,11 +275,13 @@ function addCustomLayers(map: MlMap, theme: Theme) {
     source: 'stores',
     paint: {
       'circle-color': typeColorExpression,
+      // Major transit hubs (`major` flag) render at double radius; everything
+      // else at the base size. The flag is a boolean baked on load.
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
-        11, 2,
-        14, 5,
-        16, 7,
+        11, ['case', ['==', ['get', 'major'], true], 4, 2],
+        14, ['case', ['==', ['get', 'major'], true], 10, 5],
+        16, ['case', ['==', ['get', 'major'], true], 14, 7],
       ],
       'circle-stroke-width': 2,
       'circle-stroke-color': '#ffffff',

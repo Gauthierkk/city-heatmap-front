@@ -88,7 +88,6 @@ export const STORE_TYPES: StoreTypeDef[] = [
   { tag: 'tram',          label: { en: 'Tram',                 fr: 'Tramway' },              color: '#1f9e5a', category: 'transit'   },
   { tag: 'train',         label: { en: 'Train',                fr: 'Train' },                color: '#6a3d9a', category: 'transit'   },
   { tag: 'val',           label: { en: 'VAL',                  fr: 'VAL' },                  color: '#e08e0b', category: 'transit'   },
-  { tag: 'major_station', label: { en: 'Major station',        fr: 'Grande gare' },          color: '#34495e', category: 'transit'   },
 ]
 
 // Precomputed per-category arrays — referentially stable so FilterBar's
@@ -121,8 +120,10 @@ export function typeColor(tag: string): string {
 
 // Transit stations carry a `categories[]` array (a station can be metro + RER
 // + train). To slot them into the same single-`shop` model as shops, collapse
-// the array to one primary type: the most "headline" mode wins.
-const TRANSIT_PRIORITY = ['major_station', 'train', 'rer', 'val', 'tram', 'metro']
+// the array to one primary mode: the most "headline" mode wins. `major_station`
+// is NOT a mode — it's a size flag (see MAJOR_STATION_TAG) and is excluded.
+export const MAJOR_STATION_TAG = 'major_station'
+const TRANSIT_PRIORITY = ['train', 'rer', 'val', 'tram', 'metro']
 
 export function primaryTransitType(categories: string[]): string {
   for (const tag of TRANSIT_PRIORITY) if (categories.includes(tag)) return tag
