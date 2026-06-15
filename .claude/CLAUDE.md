@@ -70,13 +70,16 @@ guards, and runbook.
 - Transit (places category, Paris): `data/places/paris/transit.geojson` is a
   normal store-shaped `FeatureCollection`, but each station ships a
   `categories[]` array (a station can be metro + rer + train), not a single
-  `shop`. On load, `withShopTags` (in `App.tsx`) collapses it to one primary
-  `shop` via `primaryTransitType` / `TRANSIT_PRIORITY` (major_station > train >
-  rer > val > tram > metro) so transit flows through the **exact same**
-  single-`shop` machinery as shops (filters, dots, type colours, distance
-  overlay, closest-station ranking) with no MapView/distanceField changes. The
-  full `categories[]` is kept on `StoreProperties` for future use. Stations
-  carry no address.
+  `shop`. On load, `withShopTags` (in `App.tsx`) sets a primary `shop` via
+  `primaryTransitType` / `TRANSIT_PRIORITY` (major_station > train > rer > val >
+  tram > metro) — used for the dot colour, type label and unnamed-fallback — but
+  the full `categories[]` is kept. **Multi-tag**: `storeTags(props)` returns
+  `categories` when present (else `[shop]`), and both the type-filter and the
+  category count match a feature if **any** of its tags is active, so a hub
+  shows under every mode it serves. The popup renders one badge per tag
+  (`parseCategories` un-stringifies the array MapLibre serialises on map
+  clicks); the closest-list row keeps just the primary badge for compactness.
+  No MapView/distanceField changes beyond the popup. Stations carry no address.
 - Trees (density category): `data/places/<city>/trees.geojson` is a bare
   `MultiPoint` (just coordinates, no properties/labels) lazy-loaded per city
   into `treesByCity` in `App.tsx` (separate from the `storesBySource` pipeline,

@@ -16,7 +16,7 @@ import {
   typesForCategory,
   type CategoryId,
 } from './storeTypes'
-import type { RankedStore, StoreCollection, Theme, UserLocation } from './types'
+import type { RankedStore, StoreCollection, StoreProperties, Theme, UserLocation } from './types'
 import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M } from './types'
 
 /** OS-derived default basemap theme; read once at startup, not live-tracked. */
@@ -51,6 +51,14 @@ function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
   return geom?.type === 'Polygon' || geom?.type === 'MultiPolygon'
     ? (geom as Polygon | MultiPolygon)
     : null
+}
+
+// A location can carry several tags (e.g. a transit hub serving metro + RER +
+// train), so it should match any of them when filtering. `categories[]` holds
+// the full set; shop data has just the single `shop`. `shop` stays the primary
+// tag (dot colour/label); these are the tags used for filtering and counts.
+function storeTags(p: StoreProperties): string[] {
+  return p.categories && p.categories.length ? p.categories : [p.shop]
 }
 
 // Transit stations ship a `categories[]` array instead of a single `shop`
@@ -238,7 +246,9 @@ export default function App() {
     if (!stores) return null
     return {
       ...stores,
-      features: stores.features.filter((f) => activeTags.has(f.properties.shop)),
+      features: stores.features.filter((f) =>
+        storeTags(f.properties).some((tag) => activeTags.has(tag)),
+      ),
     }
   }, [stores, activeTags])
 
@@ -247,7 +257,9 @@ export default function App() {
   const categoryTagSet = useMemo(() => new Set(tagsForCategory(categoryId)), [categoryId])
   const categoryTotal = useMemo(() => {
     if (!stores) return 0
-    return stores.features.filter((f) => categoryTagSet.has(f.properties.shop)).length
+    return stores.features.filter((f) =>
+      storeTags(f.properties).some((tag) => categoryTagSet.has(tag)),
+    ).length
   }, [stores, categoryTagSet])
 
   const ranked: RankedStore[] = useMemo(() => {

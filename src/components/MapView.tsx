@@ -122,21 +122,43 @@ function basemapBackground(map: MlMap, theme: Theme): string {
   return typeof color === 'string' ? color : theme === 'dark' ? '#1b1d2a' : '#f3efe9'
 }
 
+// Like the address, MapLibre stringifies the categories array when read off a
+// rendered feature (map click); the copy from React state stays a live array.
+function parseCategories(value: unknown): string[] | null {
+  if (Array.isArray(value)) return value as string[]
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 function popupHtml(
   name: string | null,
   shop: string,
+  categories: unknown,
   address: unknown,
   distance: number | null,
   lang: Lang,
 ): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const label = typeLabel(shop, lang)
-  const title = name ?? t(lang, 'unnamed', { type: label.toLowerCase() })
+  // A location may carry several tags (transit hubs); show a badge per tag,
+  // falling back to the single primary `shop`. Title uses the primary label.
+  const cats = parseCategories(categories)
+  const tags = cats && cats.length ? cats : [shop]
+  const badges = tags
+    .map((tag) => `<span class="type-badge" style="background:${typeColor(tag)}">${esc(typeLabel(tag, lang))}</span>`)
+    .join(' ')
+  const title = name ?? t(lang, 'unnamed', { type: typeLabel(shop, lang).toLowerCase() })
   const addr = formatAddress(address)
   return `
     <div class="store-popup">
       <strong>${esc(title)}</strong>
-      <div><span class="type-badge" style="background:${typeColor(shop)}">${esc(label)}</span></div>
+      <div class="popup-badges">${badges}</div>
       ${addr ? `<div class="popup-address">${esc(addr)}</div>` : ''}
       ${distance != null ? `<div class="popup-distance">${esc(t(lang, 'fromYourAddress', { d: formatDistance(distance, lang) }))}</div>` : ''}
     </div>`
@@ -339,7 +361,7 @@ export default function MapView({
         const [lng, lat] = (feature.geometry as Point).coordinates
         const u = userRef.current
         const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
-        showPopup(map, lng, lat, popupHtml(feature.properties.name ?? null, feature.properties.shop, feature.properties.address, distance, langRef.current))
+        showPopup(map, lng, lat, popupHtml(feature.properties.name ?? null, feature.properties.shop, feature.properties.categories, feature.properties.address, distance, langRef.current))
       })
 
       map.on('mouseenter', 'store-points', () => (map.getCanvas().style.cursor = 'pointer'))
@@ -558,7 +580,7 @@ export default function MapView({
       const u = userRef.current
       const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
       map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16) })
-      showPopup(map, lng, lat, popupHtml(feature.properties.name, feature.properties.shop, feature.properties.address, distance, langRef.current))
+      showPopup(map, lng, lat, popupHtml(feature.properties.name, feature.properties.shop, feature.properties.categories, feature.properties.address, distance, langRef.current))
     }
     onFocusHandled()
   }, [focusedStoreId, stores, mapReady, onFocusHandled])
