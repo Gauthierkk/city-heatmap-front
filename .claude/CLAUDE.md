@@ -55,11 +55,13 @@ guards, and runbook.
   | 'fitness' | 'transit' | 'trees'`; `CATEGORIES: CategoryDef[]` (`{ id, label,
   kind, source: DataSourceId }`). `kind` is `'places'` (grocery/specialty/
   fitness/transit — dots + distance overlay + filters + closest-place results)
-  or `'density'` (trees — an unlabelled point cloud rendered **only** as a green
-  heatmap: no dots, no filters, no results, no address flow).
+  or `'density'` (trees — a point cloud rendered as a green heatmap: no dots, no
+  distance overlay, no results, no address flow; but it **does** carry a species
+  popup and a species multi-select filter, see the Tree species note below).
   `typesForCategory(id)` and `tagsForCategory(id)` return **precomputed,
-  referentially stable** arrays (empty for density) — FilterBar receives them
-  as props and stays memo'd. Grocery = 5 food types (supermarket, convenience,
+  referentially stable** arrays (empty for density — the species filter is a
+  separate UI, not the tag FilterBar) — FilterBar receives them as props and
+  stays memo'd. Grocery = 5 food types (supermarket, convenience,
   greengrocer, organic, frozen_food); Specialty = the other 13 food types
   (incl. bakery); Fitness = 6 types (gym, yoga, pilates, martial_arts, dance,
   climbing); Transit = 5 modes (metro, rer, tram, train, val), Paris-only —
@@ -84,10 +86,11 @@ guards, and runbook.
   badge per tag (`parseCategories` un-stringifies the array MapLibre serialises
   on map clicks); the closest-list row keeps just the primary badge for
   compactness. No distanceField changes. Stations carry no address.
-- Trees (density category): `data/places/<city>/trees.geojson` is a bare
-  `MultiPoint` (just coordinates, no properties/labels) lazy-loaded per city
-  into `treesByCity` in `App.tsx` (separate from the `storesBySource` pipeline,
-  fail-soft to null like the boundary). It is pushed to a MapLibre `heatmap`
+- Trees (density category): `data/places/<city>/trees.geojson` is a Point
+  `FeatureCollection`, each feature tagged with its species (`species_fr` /
+  `species_en`), lazy-loaded per city into `treesByCity` in `App.tsx` (separate
+  from the `storesBySource` pipeline, fail-soft to null like the boundary). It is
+  pushed to a MapLibre `heatmap`
   layer (`trees-heat` in `MapView.tsx`, below labels, hidden unless a density
   category is active) as one Feature whose sub-points each contribute to the
   density. The "Tree spread" slider (10–50 m, `treeRadius` state, default 25)
@@ -101,8 +104,30 @@ guards, and runbook.
   (`basemapBackground`, read from the style's `background` layer per theme) and
   stacked just above the heatmap and just below the `boundary-line` (which
   covers the seam). Layer order below labels is therefore distance-field →
-  trees-heat → tree-mask → boundary-line. Density categories naturally clear
-  the places visuals because `App.tsx` passes `stores = null` for them.
+  trees-heat → trees-hit → tree-mask → boundary-line. Density categories
+  naturally clear the places visuals because `App.tsx` passes `stores = null`
+  for them.
+- Tree species (Trees density): each tree's `species_fr` / `species_en` is
+  surfaced two ways. (1) **Popup**: a heatmap can't be queried for its source
+  features, so an invisible `trees-hit` circle layer (same `trees` source,
+  generous zoom-ramped radius, `circle-opacity: 0`) backs a click popup via the
+  same layer-delegated handler pattern as `store-points` — the click picks the
+  **nearest** tree among the features under the cursor (haversine) and
+  `treePopupHtml` shows its species in the active language (`species_fr` for
+  `fr`, else `species_en`; empty → `unknownSpecies`) with a green "Tree" badge.
+  `trees-hit` is toggled visible/hidden alongside `trees-heat`. (2) **Filter**:
+  `SpeciesFilter` (`src/components/SpeciesFilter.tsx`) is a collapsible
+  multi-select (text search, select-all / clear-all, scrollable, counts shown,
+  sorted most-common first) rendered in the density panel. `App.tsx` derives
+  `speciesCounts` (a `Map` keyed by `species_en` → `{fr, en, count}`, language-
+  independent) and the localized `speciesList` from `treePoints`; selection
+  lives in `speciesSel` (`Set<string> | null`, keyed by `species_en` — `null` =
+  uninitialised → defaults to all once the cloud loads, reset to `null` on
+  city/category switch). The selection is pushed to the map as `activeSpecies`
+  (the selected keys, or `null` when all are selected → no filter) and applied
+  as a MapLibre **layer filter** (`['in', ['get','species_en'], ['literal',
+  …]]`) on both `trees-heat` and `trees-hit` — never by re-uploading the point
+  cloud. An empty selection clears the heatmap.
 - Map navigation is clipped per city: on select, `MapView` contain-fits the
   city bbox, sets `minZoom` to the fitted zoom (minus a small epsilon), and
   sets `maxBounds` to the fitted viewport (`map.getBounds()`) — at max
@@ -119,8 +144,9 @@ guards, and runbook.
   selection per city). `data/places/paris/transit.geojson` (Paris only) is a
   store-shaped `FeatureCollection` for the Transit category (stations carry
   `categories[]`, collapsed to `shop` on load — see the Transit note above).
-  `data/places/<city>/trees.geojson` (Paris only) is a bare `MultiPoint` for
-  the Trees density category (see the category registry note above).
+  `data/places/<city>/trees.geojson` (Paris only) is a Point `FeatureCollection`
+  (each tree tagged with `species_fr` / `species_en`) for the Trees density
+  category (see the category registry note above).
   `data/boundaries/<city>.geojson`, if present, is the clip boundary.
   Each store feature also carries an optional `address` object (`housenumber`,
   `street`, `postcode`, `city` — all optional, partial coverage) baked in by

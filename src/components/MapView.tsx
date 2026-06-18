@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, MultiPoint, MultiPolygon, Point, Polygon } from 'geojson'
+import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from 'geojson'
 import maplibregl, { Map as MlMap, Marker, Popup } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
@@ -26,11 +26,15 @@ interface Props {
   /** City admin boundary clipping the overlay: undefined = still loading,
    *  null = unavailable (render unclipped) */
   boundary: Polygon | MultiPolygon | null | undefined
-  /** Active density category's point cloud (Trees): rendered as a heatmap,
-   *  no dots/labels. null = not a density category, or still loading. */
-  treePoints: MultiPoint | null
+  /** Active density category's point cloud (Trees): a FeatureCollection of Point
+   *  features (each with its species), rendered as a heatmap, no dots/labels.
+   *  null = not a density category, or still loading. */
+  treePoints: FeatureCollection<Point> | null
   /** Tree heatmap spread in ground metres (per-tree influence radius) */
   treeRadiusM: number
+  /** Selected tree species (by English name) for the density heatmap; null =
+   *  no filter (show every species). Applied as a MapLibre layer filter. */
+  activeSpecies: string[] | null
   focusedStoreId: string | null
   onFocusHandled: () => void
 }
@@ -164,6 +168,21 @@ function popupHtml(
     </div>`
 }
 
+// Tree species popup (density category): just the species name plus a small
+// green "Tree" badge — trees carry no address or distance-to-you. Empty species
+// (some trees have no recorded species) fall back to a localized label.
+function treePopupHtml(species: string | null | undefined, lang: Lang): string {
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const name = species && species.trim() ? species : t(lang, 'unknownSpecies')
+  return `
+    <div class="store-popup">
+      <strong>${esc(name)}</strong>
+      <div class="popup-badges">
+        <span class="type-badge" style="background:#2e8b57">${esc(t(lang, 'tree'))}</span>
+      </div>
+    </div>`
+}
+
 // Placeholder 1×1 transparent PNG so the image source always has something
 const BLANK_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -199,8 +218,8 @@ function addCustomLayers(map: MlMap, theme: Theme) {
     firstSymbolId,
   )
 
-  // Tree density heatmap (density categories). One MultiPoint feature whose
-  // sub-points each contribute to the density; green ramp, no labels/dots.
+  // Tree density heatmap (density categories). A FeatureCollection of Point
+  // features, each contributing to the density; green ramp, no labels/dots.
   // Inserted below labels and starts hidden — the data effect toggles it.
   map.addSource('trees', { type: 'geojson', data: EMPTY_FC })
   map.addLayer(
@@ -224,6 +243,26 @@ function addCustomLayers(map: MlMap, theme: Theme) {
           0.8, 'rgba(35, 132, 67, 0.9)',
           1, 'rgba(0, 90, 50, 0.95)',
         ],
+      },
+    },
+    firstSymbolId,
+  )
+
+  // Transparent hit-test layer for the heatmap: a heatmap can't be queried for
+  // its source features, so this invisible circle layer (same `trees` source)
+  // backs the species popup via the same layer-delegated click pattern as the
+  // store dots. Generous radius so clicks land on a nearby tree. Toggled with
+  // the heatmap and filtered alongside it.
+  map.addLayer(
+    {
+      id: 'trees-hit',
+      type: 'circle',
+      source: 'trees',
+      layout: { visibility: 'none' },
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 6, 16, 12],
+        'circle-color': '#000000',
+        'circle-opacity': 0,
       },
     },
     firstSymbolId,
@@ -301,6 +340,7 @@ export default function MapView({
   boundary,
   treePoints,
   treeRadiusM,
+  activeSpecies,
   focusedStoreId,
   onFocusHandled,
 }: Props) {
@@ -368,6 +408,31 @@ export default function MapView({
 
       map.on('mouseenter', 'store-points', () => (map.getCanvas().style.cursor = 'pointer'))
       map.on('mouseleave', 'store-points', () => (map.getCanvas().style.cursor = ''))
+
+      // Tree heatmap: pick the tree nearest the click among the features under
+      // the cursor and show its species in the active language.
+      map.on('click', 'trees-hit', (e) => {
+        const features = e.features
+        if (!features?.length) return
+        const { lng, lat } = e.lngLat
+        let nearest = features[0]
+        let best = Infinity
+        for (const f of features) {
+          const [flng, flat] = (f.geometry as Point).coordinates
+          const d = haversineMetres(lng, lat, flng, flat)
+          if (d < best) {
+            best = d
+            nearest = f
+          }
+        }
+        const [plng, plat] = (nearest.geometry as Point).coordinates
+        const props = nearest.properties ?? {}
+        const species = langRef.current === 'fr' ? props.species_fr : props.species_en
+        showPopup(map, plng, plat, treePopupHtml(species, langRef.current))
+      })
+
+      map.on('mouseenter', 'trees-hit', () => (map.getCanvas().style.cursor = 'pointer'))
+      map.on('mouseleave', 'trees-hit', () => (map.getCanvas().style.cursor = ''))
 
       setMapReady(true)
       setStyleEpoch((e) => e + 1)
@@ -508,14 +573,30 @@ export default function MapView({
     if (!map || styleEpoch === 0) return
     const source = map.getSource('trees') as maplibregl.GeoJSONSource | undefined
     if (!source) return
-    const data: Feature | FeatureCollection = treePoints
-      ? { type: 'Feature', properties: {}, geometry: treePoints }
-      : EMPTY_FC
-    source.setData(data)
-    if (map.getLayer('trees-heat')) {
-      map.setLayoutProperty('trees-heat', 'visibility', treePoints ? 'visible' : 'none')
-    }
+    // treePoints is already a FeatureCollection of Points — a heatmap source
+    // reads it directly (each feature contributes one point to the density).
+    source.setData(treePoints ?? EMPTY_FC)
+    const visibility = treePoints ? 'visible' : 'none'
+    if (map.getLayer('trees-heat')) map.setLayoutProperty('trees-heat', 'visibility', visibility)
+    // The hit-test layer follows the heatmap so clicks only land on shown trees.
+    if (map.getLayer('trees-hit')) map.setLayoutProperty('trees-hit', 'visibility', visibility)
   }, [treePoints, styleEpoch])
+
+  // Species filter: drive the heatmap (and its hit layer) with a MapLibre layer
+  // filter rather than re-uploading the point cloud. null = no filter; an empty
+  // array selects nothing (heatmap clears). Keyed on the species array's
+  // identity, which App only recreates when the selection actually changes.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || styleEpoch === 0) return
+    const filter = (
+      activeSpecies
+        ? ['in', ['get', 'species_en'], ['literal', activeSpecies]]
+        : null
+    ) as maplibregl.FilterSpecification | null
+    if (map.getLayer('trees-heat')) map.setFilter('trees-heat', filter)
+    if (map.getLayer('trees-hit')) map.setFilter('trees-hit', filter)
+  }, [activeSpecies, styleEpoch])
 
   // Inverse-boundary mask follows the heatmap: shown only when a density
   // category is active and a boundary is loaded, so the heatmap is clipped to

@@ -1,10 +1,11 @@
-import type { MultiPoint, MultiPolygon, Polygon } from 'geojson'
+import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon, Position } from 'geojson'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CITIES, DEFAULT_CITY, cityById } from './cities'
 import AddressSearch from './components/AddressSearch'
 import FilterBar from './components/FilterBar'
 import MapView from './components/MapView'
 import ResultsPanel from './components/ResultsPanel'
+import SpeciesFilter from './components/SpeciesFilter'
 import { type Lang, detectLang, locale, t, titleSegments } from './i18n'
 import { haversineMetres } from './lib/distance'
 import {
@@ -82,19 +83,36 @@ function withShopTags(data: StoreCollection): StoreCollection {
   }
 }
 
-// Tree files are a bare MultiPoint geometry, but accept a Feature/FeatureCollection
-// wrapper too so the worker is free to bake either shape.
-function extractMultiPoint(data: unknown): MultiPoint | null {
+// Tree files are a FeatureCollection of Point features, each carrying its species
+// (species_fr / species_en) so every coordinate is bound to a name. A legacy bare
+// MultiPoint (or Feature wrapping one) is normalised into the same shape so either
+// bake works. Returns null if the payload holds no usable points.
+function extractTreePoints(data: unknown): FeatureCollection<Point> | null {
+  type GeomLike = { type?: string; coordinates?: Position[] }
   const obj = data as {
     type?: string
-    geometry?: { type?: string }
+    geometry?: GeomLike
     features?: Array<{ geometry?: { type?: string } }>
   } | null
-  const geom =
-    obj?.type === 'Feature' ? obj.geometry :
-    obj?.type === 'FeatureCollection' ? obj.features?.[0]?.geometry :
-    obj
-  return geom?.type === 'MultiPoint' ? (geom as MultiPoint) : null
+
+  if (obj?.type === 'FeatureCollection' && Array.isArray(obj.features)) {
+    const points = (obj.features as Feature[]).filter((f) => f.geometry?.type === 'Point')
+    return points.length ? { type: 'FeatureCollection', features: points as Feature<Point>[] } : null
+  }
+
+  // Legacy MultiPoint (bare or Feature-wrapped): explode into Point features.
+  const geom: GeomLike | null | undefined = obj?.type === 'Feature' ? obj.geometry : (obj as GeomLike | null)
+  if (geom?.type === 'MultiPoint' && Array.isArray(geom.coordinates)) {
+    return {
+      type: 'FeatureCollection',
+      features: geom.coordinates.map((coordinates) => ({
+        type: 'Feature' as const,
+        properties: {},
+        geometry: { type: 'Point' as const, coordinates },
+      })),
+    }
+  }
+  return null
 }
 
 export default function App() {
@@ -112,8 +130,9 @@ export default function App() {
   const [boundaryByCity, setBoundaryByCity] = useState<
     Record<string, Polygon | MultiPolygon | null>
   >({})
-  // Tree point cloud per city for density categories; null = unavailable.
-  const [treesByCity, setTreesByCity] = useState<Record<string, MultiPoint | null>>({})
+  // Tree point cloud per city for density categories; null = unavailable. Each
+  // feature is a Point carrying its species (species_fr / species_en).
+  const [treesByCity, setTreesByCity] = useState<Record<string, FeatureCollection<Point> | null>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [user, setUser] = useState<UserLocation | null>(null)
   const [activeTags, setActiveTags] = useState<Set<string>>(
@@ -128,6 +147,10 @@ export default function App() {
   // influence radius; rendered as true metres so it stays thin at city zoom
   // and sharpens as you zoom in.
   const [treeRadius, setTreeRadius] = useState(25)
+  // Selected tree species for the density heatmap (keyed by English name).
+  // null = uninitialised → defaults to all once the point cloud loads; reset to
+  // null on city/category switch so each density view starts with all selected.
+  const [speciesSel, setSpeciesSel] = useState<Set<string> | null>(null)
   const [focusedStoreId, setFocusedStoreId] = useState<string | null>(null)
 
   // Reflect the UI language on <html lang> for a11y / correct hyphenation.
@@ -147,6 +170,50 @@ export default function App() {
   const boundary = city.id in boundaryByCity ? boundaryByCity[city.id] : undefined
   // Tree point cloud for the active density category (null = none/loading)
   const treePoints = isDensity ? treesByCity[city.id] ?? null : null
+
+  // Distinct species in the active point cloud, keyed by English name (the
+  // stable id used for filtering); each carries both names + a count. Language-
+  // independent, so it only recomputes when the point cloud changes.
+  const speciesCounts = useMemo(() => {
+    if (!treePoints) return null
+    const map = new Map<string, { fr: string; en: string; count: number }>()
+    for (const f of treePoints.features) {
+      const p = f.properties ?? {}
+      const en = typeof p.species_en === 'string' ? p.species_en : ''
+      const fr = typeof p.species_fr === 'string' ? p.species_fr : ''
+      const entry = map.get(en)
+      if (entry) entry.count++
+      else map.set(en, { fr, en, count: 1 })
+    }
+    return map
+  }, [treePoints])
+
+  // Display list for the filter: localized label, sorted most-common first.
+  const speciesList = useMemo(() => {
+    if (!speciesCounts) return []
+    return [...speciesCounts.values()]
+      .map((s) => ({
+        key: s.en,
+        label: (lang === 'fr' ? s.fr : s.en) || t(lang, 'unknownSpecies'),
+        count: s.count,
+      }))
+      .sort((a, b) => b.count - a.count)
+  }, [speciesCounts, lang])
+
+  // The filter passed to the map: null when every species is selected (no
+  // filter), the selected keys otherwise. An empty selection clears the heatmap.
+  const activeSpecies = useMemo(() => {
+    if (!speciesSel || !speciesCounts) return null
+    if (speciesSel.size >= speciesCounts.size) return null
+    return [...speciesSel]
+  }, [speciesSel, speciesCounts])
+
+  // Default the selection to all species once the point cloud loads for a
+  // density view (speciesSel is reset to null on every city/category switch).
+  useEffect(() => {
+    if (!isDensity || speciesSel !== null || !speciesCounts) return
+    setSpeciesSel(new Set(speciesCounts.keys()))
+  }, [isDensity, speciesSel, speciesCounts])
 
   useEffect(() => {
     if (!sourceFile || storesBySource[sourceFile]) return
@@ -182,7 +249,7 @@ export default function App() {
         return res.json()
       })
       .then((data) => {
-        if (!cancelled) setTreesByCity((prev) => ({ ...prev, [city.id]: extractMultiPoint(data) }))
+        if (!cancelled) setTreesByCity((prev) => ({ ...prev, [city.id]: extractTreePoints(data) }))
       })
       .catch((err) => {
         if (!cancelled) {
@@ -221,6 +288,7 @@ export default function App() {
     setUser(null)
     setFocusedStoreId(null)
     setLoadError(null)
+    setSpeciesSel(null)
     // A density category may not exist for the new city (e.g. Trees is
     // Paris-only) — fall back to the default category if so.
     if (!cityById(id).storesFiles[category.source]) {
@@ -235,6 +303,7 @@ export default function App() {
     setActiveTags(new Set(tagsForCategory(id as CategoryId)))
     setFocusedStoreId(null)
     setLoadError(null)
+    setSpeciesSel(null)
     // user / address intentionally kept — results re-rank to the new category
   }
 
@@ -243,6 +312,7 @@ export default function App() {
     setActiveTags((prev) => (sameTagSet(prev, next) ? prev : next))
   }, [])
   const clearUser = useCallback(() => setUser(null), [])
+  const handleSpeciesChange = useCallback((next: Set<string>) => setSpeciesSel(next), [])
   const handleFocusHandled = useCallback(() => setFocusedStoreId(null), [])
   const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
 
@@ -295,6 +365,7 @@ export default function App() {
         boundary={boundary}
         treePoints={treePoints}
         treeRadiusM={treeRadius}
+        activeSpecies={activeSpecies}
         focusedStoreId={focusedStoreId}
         onFocusHandled={handleFocusHandled}
       />
@@ -395,6 +466,12 @@ export default function App() {
                 />
               </label>
             </div>
+            <SpeciesFilter
+              species={speciesList}
+              active={speciesSel}
+              lang={lang}
+              onChange={handleSpeciesChange}
+            />
           </>
         )}
         {panelExpanded && !isDensity && (

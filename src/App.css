@@ -283,6 +283,94 @@ body,
   margin-top: 4px;
 }
 
+/* Tree species filter (density category) */
+.species-filter {
+  margin-top: 12px;
+}
+
+.species-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: white;
+  font-size: 0.85rem;
+  color: #444;
+  cursor: pointer;
+}
+
+.species-chevron {
+  color: #888;
+  font-size: 0.7rem;
+}
+
+.species-dropdown {
+  margin-top: 6px;
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.species-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.species-dropdown .filter-actions {
+  margin-bottom: 6px;
+}
+
+.species-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.species-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 2px;
+  font-size: 0.82rem;
+  color: #333;
+  cursor: pointer;
+}
+
+.species-option input {
+  flex: none;
+}
+
+.species-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.species-count {
+  flex: none;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+}
+
+.species-empty {
+  padding: 6px 2px;
+  font-size: 0.82rem;
+  color: #888;
+}
+
 /* Results */
 .results {
   margin-top: 12px;
