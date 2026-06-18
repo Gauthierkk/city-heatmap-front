@@ -86,9 +86,16 @@ guards, and runbook.
   badge per tag (`parseCategories` un-stringifies the array MapLibre serialises
   on map clicks); the closest-list row keeps just the primary badge for
   compactness. No distanceField changes. Stations carry no address.
-- Trees (density category): `data/places/<city>/trees.geojson` is a Point
-  `FeatureCollection`, each feature tagged with its species (`species_fr` /
-  `species_en`), lazy-loaded per city into `treesByCity` in `App.tsx` (separate
+- Trees (density category): `data/places/<city>/trees.geojson` is the compact
+  **`trees-columnar-v1`** payload — a frequency-sorted `species` lookup table
+  (`[{fr, en}, …]`) plus parallel `coordinates` / `speciesIndex` arrays (~4 MB
+  for Paris's 192k trees, down from ~36 MB of repeated per-feature species
+  strings). `extractTreePoints` in `App.tsx` detects the format and expands it
+  into a Point `FeatureCollection`, resolving each tree's `species_fr` /
+  `species_en` from the table (the assigned strings are the table's own
+  references — no per-point copies); it also still accepts a plain
+  `FeatureCollection` and a legacy bare `MultiPoint`. The result is lazy-loaded
+  per city into `treesByCity` in `App.tsx` (separate
   from the `storesBySource` pipeline, fail-soft to null like the boundary). It is
   pushed to a MapLibre `heatmap`
   layer (`trees-heat` in `MapView.tsx`, below labels, hidden unless a density
@@ -144,9 +151,10 @@ guards, and runbook.
   selection per city). `data/places/paris/transit.geojson` (Paris only) is a
   store-shaped `FeatureCollection` for the Transit category (stations carry
   `categories[]`, collapsed to `shop` on load — see the Transit note above).
-  `data/places/<city>/trees.geojson` (Paris only) is a Point `FeatureCollection`
-  (each tree tagged with `species_fr` / `species_en`) for the Trees density
-  category (see the category registry note above).
+  `data/places/<city>/trees.geojson` (Paris only) is the compact
+  `trees-columnar-v1` payload (species lookup table + parallel coordinate / index
+  arrays, expanded to per-tree `species_fr` / `species_en` on load) for the Trees
+  density category (see the category registry note above).
   `data/boundaries/<city>.geojson`, if present, is the clip boundary.
   Each store feature also carries an optional `address` object (`housenumber`,
   `street`, `postcode`, `city` — all optional, partial coverage) baked in by

@@ -22,8 +22,9 @@ npm run dev        # http://localhost:5173
 ## Store data
 
 The bundled GeoJSON lives at the repo root under `data/places/<city>/` (the
-`food` and `fitness` store files, plus `transit` and a `trees` Point
-FeatureCollection — each tree tagged with its species — for Paris) and
+`food` and `fitness` store files, plus `transit` and a compact `trees` file —
+a `trees-columnar-v1` payload: a species lookup table plus parallel coordinate /
+index arrays, expanded to per-tree species client-side — for Paris) and
 `data/boundaries/<city>.geojson` (overlay clip
 boundary), served
 same-origin at runtime (a small Vite plugin maps `./data/*` → `/data/*`). It is

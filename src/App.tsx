@@ -83,17 +83,44 @@ function withShopTags(data: StoreCollection): StoreCollection {
   }
 }
 
-// Tree files are a FeatureCollection of Point features, each carrying its species
-// (species_fr / species_en) so every coordinate is bound to a name. A legacy bare
-// MultiPoint (or Feature wrapping one) is normalised into the same shape so either
-// bake works. Returns null if the payload holds no usable points.
+// Tree files are normalised into a FeatureCollection of Point features, each
+// carrying its species (species_fr / species_en) so every coordinate is bound to
+// a name and the heatmap / species filter consume one shape. Three on-disk forms
+// are accepted: the compact `trees-columnar-v1` payload (a species lookup table +
+// parallel coordinate / index arrays — the worker's current output), a plain
+// FeatureCollection, and a legacy bare MultiPoint. Returns null if the payload
+// holds no usable points.
 function extractTreePoints(data: unknown): FeatureCollection<Point> | null {
   type GeomLike = { type?: string; coordinates?: Position[] }
   const obj = data as {
     type?: string
+    format?: string
     geometry?: GeomLike
     features?: Array<{ geometry?: { type?: string } }>
   } | null
+
+  // Columnar format: a frequency-sorted species table indexed per point. Expand
+  // into Point features, resolving each species from the table — the assigned
+  // strings are the table's own references, so no per-point string copies.
+  if (obj?.format === 'trees-columnar-v1') {
+    const { species, coordinates, speciesIndex } = obj as unknown as {
+      species?: { fr?: string; en?: string }[]
+      coordinates?: Position[]
+      speciesIndex?: number[]
+    }
+    if (!Array.isArray(species) || !Array.isArray(coordinates) || !Array.isArray(speciesIndex)) {
+      return null
+    }
+    const features = coordinates.map((coords, i): Feature<Point> => {
+      const sp = species[speciesIndex[i]] ?? { fr: '', en: '' }
+      return {
+        type: 'Feature',
+        properties: { species_fr: sp.fr ?? '', species_en: sp.en ?? '' },
+        geometry: { type: 'Point', coordinates: coords },
+      }
+    })
+    return features.length ? { type: 'FeatureCollection', features } : null
+  }
 
   if (obj?.type === 'FeatureCollection' && Array.isArray(obj.features)) {
     const points = (obj.features as Feature[]).filter((f) => f.geometry?.type === 'Point')
