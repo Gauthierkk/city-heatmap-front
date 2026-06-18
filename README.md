@@ -1,4 +1,4 @@
-# Grocery Heatmap
+# Paris Heatmap
 
 Interactive map of switchable business categories — grocery stores, specialty
 food shops, and fitness venues — across Paris, NYC, and Austin, with a
