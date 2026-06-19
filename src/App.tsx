@@ -1,6 +1,6 @@
 import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon, Position } from 'geojson'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CITIES, DEFAULT_CITY, cityById } from './cities'
+import { DEFAULT_CITY, cityById } from './cities'
 import AddressSearch from './components/AddressSearch'
 import FilterBar from './components/FilterBar'
 import MapView from './components/MapView'
@@ -143,7 +143,9 @@ function extractTreePoints(data: unknown): FeatureCollection<Point> | null {
 }
 
 export default function App() {
-  const [cityId, setCityId] = useState(DEFAULT_CITY.id)
+  // City is fixed to Paris (NYC/Austin are deprecated; the selector is disabled),
+  // so the id is seeded once and never changes — no setter.
+  const [cityId] = useState(DEFAULT_CITY.id)
   const [categoryId, setCategoryId] = useState<CategoryId>(DEFAULT_CATEGORY.id)
   const [lang, setLang] = useState<Lang>(detectLang)
   // Like lang: seeded from the browser, never persisted, passed as a prop.
@@ -312,21 +314,6 @@ export default function App() {
     }
   }, [city, boundaryByCity])
 
-  function switchCity(id: string) {
-    if (id === cityId) return
-    setCityId(id)
-    setUser(null)
-    setFocusedStoreId(null)
-    setLoadError(null)
-    setSpeciesSel(null)
-    // A density category may not exist for the new city (e.g. Trees is
-    // Paris-only) — fall back to the default category if so.
-    if (!cityById(id).storesFiles[category.source]) {
-      setCategoryId(DEFAULT_CATEGORY.id)
-      setActiveTags(new Set(tagsForCategory(DEFAULT_CATEGORY.id)))
-    }
-  }
-
   function switchCategory(id: string) {
     if (id === categoryId) return
     setCategoryId(id as CategoryId)
@@ -435,23 +422,11 @@ export default function App() {
             {titleSegments(lang).map((seg, i) => {
               if (seg.kind === 'text') return <span key={i}>{seg.value}</span>
               if (seg.slot === 'city') {
+                // City selection is disabled — the app is Paris-only (NYC/Austin
+                // are deprecated), so the city renders as static heading text.
                 return (
-                  <span key="city" className="city-select-wrap">
-                    <select
-                      className="city-select"
-                      value={city.id}
-                      aria-label={t(lang, 'cityAria')}
-                      onChange={(e) => switchCity(e.target.value)}
-                    >
-                      {CITIES.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="city-select-sizer" aria-hidden="true">
-                      {city.label}
-                    </span>
+                  <span key="city" className="city-static">
+                    {city.label}
                   </span>
                 )
               }

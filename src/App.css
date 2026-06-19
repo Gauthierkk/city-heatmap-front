@@ -118,6 +118,13 @@ body,
   border: 1px solid transparent;
 }
 
+/* City is fixed to Paris: rendered as static heading text, not a selector. */
+.city-static {
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+}
+
 .city-select {
   /* contribute nothing to the grid track (the sizer sets it), then stretch */
   width: 0;
