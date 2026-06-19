@@ -94,7 +94,7 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   compactness. No distanceField changes. Stations carry no address.
 - Trees (density category): `data/places/<city>/trees.geojson` is the compact
   **`trees-columnar-v1`** payload — a frequency-sorted `species` lookup table
-  (`[{fr, en}, …]`) plus parallel `coordinates` / `speciesIndex` arrays (~4 MB
+  (`[{fr, en}, …]`) plus parallel `coordinates` / `speciesIndex` arrays (~3.7 MB
   for Paris's 192k trees, down from ~36 MB of repeated per-feature species
   strings). `extractTreePoints` in `App.tsx` detects the format and expands it
   into a Point `FeatureCollection`, resolving each tree's `species_fr` /
