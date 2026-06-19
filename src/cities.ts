@@ -41,6 +41,7 @@ export const CITIES: CityDef[] = [
       food: 'data/places/paris/food.geojson',
       fitness: 'data/places/paris/fitness.geojson',
       transit: 'data/places/paris/transit.geojson',
+      pharmacy: 'data/places/paris/pharmacy.geojson',
       trees: 'data/places/paris/trees.geojson',
     },
     boundaryFile: 'data/boundaries/paris.geojson',

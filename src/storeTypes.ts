@@ -1,7 +1,7 @@
 import type { Lang } from './i18n'
 
-export type CategoryId = 'grocery' | 'specialty' | 'fitness' | 'transit' | 'trees'
-export type DataSourceId = 'food' | 'fitness' | 'transit' | 'trees'
+export type CategoryId = 'grocery' | 'specialty' | 'fitness' | 'transit' | 'pharmacy' | 'trees'
+export type DataSourceId = 'food' | 'fitness' | 'transit' | 'pharmacy' | 'trees'
 
 /** 'places' = labelled point data (dots + distance overlay + filters +
  *  closest-place results). 'density' = an unlabelled point cloud rendered only
@@ -36,8 +36,9 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'grocery',   label: { en: 'Grocery',        fr: 'Commerces alimentaires' }, kind: 'places',  source: 'food'    },
   { id: 'specialty', label: { en: 'Specialty Food', fr: 'Épiceries fines' },        kind: 'places',  source: 'food'    },
   { id: 'fitness',   label: { en: 'Fitness',        fr: 'Fitness' },                kind: 'places',  source: 'fitness' },
-  { id: 'transit',   label: { en: 'Transit',        fr: 'Transports' },             kind: 'places',  source: 'transit' },
-  { id: 'trees',     label: { en: 'Trees',          fr: 'Arbres' },                 kind: 'density', source: 'trees'   },
+  { id: 'transit',   label: { en: 'Transit',        fr: 'Transports' },             kind: 'places',  source: 'transit'  },
+  { id: 'pharmacy',  label: { en: 'Pharmacies',     fr: 'Pharmacies' },             kind: 'places',  source: 'pharmacy' },
+  { id: 'trees',     label: { en: 'Trees',          fr: 'Arbres' },                 kind: 'density', source: 'trees'    },
 ]
 
 export const DEFAULT_CATEGORY = CATEGORIES[0]
@@ -88,6 +89,10 @@ export const STORE_TYPES: StoreTypeDef[] = [
   { tag: 'tram',          label: { en: 'Tram',                 fr: 'Tramway' },              color: '#1f9e5a', category: 'transit'   },
   { tag: 'train',         label: { en: 'Train',                fr: 'Train' },                color: '#6a3d9a', category: 'transit'   },
   { tag: 'val',           label: { en: 'VAL',                  fr: 'VAL' },                  color: '#e08e0b', category: 'transit'   },
+  // Pharmacy — a single-type category (the Paris register has no sub-types), so
+  // its FilterBar shows one pill. Reuses the `shop` key like fitness/transit.
+  // Green echoes the French pharmacy cross.
+  { tag: 'pharmacy',      label: { en: 'Pharmacy',             fr: 'Pharmacie' },            color: '#16a34a', category: 'pharmacy'  },
 ]
 
 // Precomputed per-category arrays — referentially stable so FilterBar's

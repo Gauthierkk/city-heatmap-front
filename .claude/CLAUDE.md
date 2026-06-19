@@ -58,9 +58,9 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   Store + boundary data are fetched lazily per source file and cached in
   `App.tsx` state for the session.
 - Category registry (`src/storeTypes.ts`): `CategoryId = 'grocery' | 'specialty'
-  | 'fitness' | 'transit' | 'trees'`; `CATEGORIES: CategoryDef[]` (`{ id, label,
+  | 'fitness' | 'transit' | 'pharmacy' | 'trees'`; `CATEGORIES: CategoryDef[]` (`{ id, label,
   kind, source: DataSourceId }`). `kind` is `'places'` (grocery/specialty/
-  fitness/transit — dots + distance overlay + filters + closest-place results)
+  fitness/transit/pharmacy — dots + distance overlay + filters + closest-place results)
   or `'density'` (trees — a point cloud rendered as a green heatmap: no dots, no
   distance overlay, no results, no address flow; but it **does** carry a species
   popup and a species multi-select filter, see the Tree species note below).
@@ -73,9 +73,16 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   climbing); Transit = 5 modes (metro, rer, tram, train, val), Paris-only —
   `major_station` is a size flag, not a mode (see below). The category
   `<select>` is filtered per city to those with a
-  `storesFiles[source]`, so Transit and Trees only appear for Paris; switching
-  to a city that lacks the active source falls back to the default category.
+  `storesFiles[source]`, so Transit, Pharmacies and Trees only appear for Paris;
+  switching to a city that lacks the active source falls back to the default category.
   `categoryById(id)` mirrors `cityById` with a fallback to the default.
+- Pharmacy (places category, Paris): `data/places/paris/pharmacy.geojson` is a
+  plain store-shaped `FeatureCollection` with `shop: 'pharmacy'` (the Paris
+  pharmacy register from the worker's `fetch-pharmacies`). It needs no special
+  loader — it flows straight through the places pipeline (dots, distance overlay,
+  closest-places, popups with the baked-in address). It is a **single-type**
+  category, so its FilterBar shows one pill. Source id `'pharmacy'`; the dot/badge
+  colour is the pharmacy-cross green in `STORE_TYPES`.
 - Transit (places category, Paris): `data/places/paris/transit.geojson` is a
   normal store-shaped `FeatureCollection`, but each station ships a
   `categories[]` array (a station can be metro + rer + train), not a single
@@ -175,6 +182,9 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   selection per city). `data/places/paris/transit.geojson` (Paris only) is a
   store-shaped `FeatureCollection` for the Transit category (stations carry
   `categories[]`, collapsed to `shop` on load — see the Transit note above).
+  `data/places/paris/pharmacy.geojson` (Paris only) is a plain store-shaped
+  `FeatureCollection` with `shop: 'pharmacy'` for the Pharmacies category (no
+  special loader — see the Pharmacy note above).
   `data/places/<city>/trees.geojson` (Paris only) is the compact
   `trees-columnar-v1` payload (species lookup table + parallel coordinate / index
   arrays, expanded to per-tree `species_fr` / `species_en` on load) for the Trees
