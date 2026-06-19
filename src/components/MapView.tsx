@@ -76,6 +76,13 @@ const BOUNDARY_LINE: Record<Theme, { color: string; opacity: number }> = {
   light: { color: '#1a1a2e', opacity: 0.5 },
 }
 
+// Park / garden name labels (Trees density view only). Green-tinted text per
+// theme so it reads as "park" against each basemap, with a contrasting halo.
+const TREE_PARK_LABEL: Record<Theme, { color: string; halo: string }> = {
+  dark: { color: '#9ccc9c', halo: '#16241c' },
+  light: { color: '#1b5e20', halo: 'rgba(255,255,255,0.9)' },
+}
+
 const typeColorExpression = [
   'match',
   ['get', 'shop'],
@@ -284,6 +291,40 @@ function addCustomLayers(map: MlMap, theme: Theme) {
       ],
       'circle-stroke-width': 2,
       'circle-stroke-color': '#ffffff',
+    },
+  })
+
+  // Park / garden name labels (Trees density view only). The basemap park/garden
+  // polygons carry no names — those names live in the `poi` source-layer as
+  // points — and the dark Fiord style ships no POI labels at all. So this
+  // text-only layer surfaces them: filtered to the park/garden POI classes,
+  // collision-thinned (lowest `rank` wins, so the big parks label first and more
+  // appear as you zoom). Added last so it yields to the basemap's own labels.
+  // Starts hidden; the density-visibility effect shows it only on the Trees view.
+  const parkLabel = TREE_PARK_LABEL[theme]
+  map.addLayer({
+    id: 'tree-park-labels',
+    type: 'symbol',
+    source: 'openmaptiles',
+    'source-layer': 'poi',
+    filter: [
+      'all',
+      ['match', ['get', 'class'], ['park', 'garden'], true, false],
+      ['has', 'name'],
+    ],
+    layout: {
+      visibility: 'none',
+      'text-field': ['get', 'name'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 10, 16, 13],
+      'text-max-width': 7,
+      // Lower OSM rank = more prominent; place those first so they win collision.
+      'symbol-sort-key': ['to-number', ['get', 'rank'], 99],
+    },
+    paint: {
+      'text-color': parkLabel.color,
+      'text-halo-color': parkLabel.halo,
+      'text-halo-width': 1.2,
     },
   })
 }
@@ -559,15 +600,19 @@ export default function MapView({
     if (map.getLayer('trees-hit')) map.setFilter('trees-hit', filter)
   }, [activeSpecies, styleEpoch])
 
-  // The distance field is a places-only proximity overlay. On a density (Trees)
-  // page there are no stores, so it would render a solid blue raster over the
-  // bbox; hide the layer explicitly in density mode so the basemap shows through
-  // (matching the places pages). Keyed on styleEpoch so it re-applies after a
-  // theme switch re-adds the layer visible-by-default.
+  // Density-mode layer visibility. The distance field is a places-only proximity
+  // overlay (on a density page there are no stores, so it would render a solid
+  // blue raster) — hide it in density mode so the basemap shows through. The
+  // park/garden name labels are the inverse: shown only on the Trees view. Keyed
+  // on styleEpoch so both re-apply after a theme switch re-adds the layers at
+  // their default visibility.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || styleEpoch === 0 || !map.getLayer('distance-field-layer')) return
-    map.setLayoutProperty('distance-field-layer', 'visibility', isDensity ? 'none' : 'visible')
+    if (!map || styleEpoch === 0) return
+    if (map.getLayer('distance-field-layer'))
+      map.setLayoutProperty('distance-field-layer', 'visibility', isDensity ? 'none' : 'visible')
+    if (map.getLayer('tree-park-labels'))
+      map.setLayoutProperty('tree-park-labels', 'visibility', isDensity ? 'visible' : 'none')
   }, [isDensity, styleEpoch])
 
   // Tree heatmap spread: convert the metres slider to a ground-metres radius

@@ -115,10 +115,21 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   outlines the edge (a small heatmap bloom of the spread radius may extend just
   past it). There is no fill mask. The places-only distance-field overlay is meaningless on a density
   page (no stores -> it would render a solid blue raster), so MapView hides
-  `distance-field-layer` whenever the `isDensity` prop is set. Layer order below
-  labels is distance-field (places only, hidden in density mode) → trees-heat →
-  trees-hit → boundary-line. Density categories also pass `stores = null`, which
-  clears the places dots.
+  `distance-field-layer` whenever the `isDensity` prop is set. Conversely, a
+  `tree-park-labels` symbol layer is shown **only** in density mode (toggled by
+  the same `isDensity` effect): it surfaces park / garden **names** on the Trees
+  view — text only, no added shapes; the basemap green park/garden polygons are
+  **kept**. The names aren't on those polygons (they're unnamed `landcover`); they
+  live in the `poi` source-layer as points, and the dark Fiord style ships no POI
+  labels at all, so this layer reads `source-layer: 'poi'` (vector source
+  `openmaptiles`, shared by both styles), filtered to `class in [park, garden]`
+  with a `name`, green-tinted per theme (`TREE_PARK_LABEL`), collision-thinned via
+  `symbol-sort-key: rank` (lowest rank wins). POI park/garden features only exist
+  in the tiles from ~z14, so labels appear as you zoom, not at city zoom. Layer
+  order below labels is distance-field (places only, hidden in density mode) →
+  trees-heat → trees-hit → boundary-line; `tree-park-labels` is added last (above
+  labels) so it yields to the basemap's own labels in collision. Density
+  categories also pass `stores = null`, which clears the places dots.
 - Tree species (Trees density): each tree's `species_fr` / `species_en` is
   surfaced two ways. (1) **Popup**: a heatmap can't be queried for its source
   features, so an invisible `trees-hit` circle layer (same `trees` source,
