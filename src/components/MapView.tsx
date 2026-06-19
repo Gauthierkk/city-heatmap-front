@@ -35,6 +35,9 @@ interface Props {
   /** Selected tree species (by English name) for the density heatmap; null =
    *  no filter (show every species). Applied as a MapLibre layer filter. */
   activeSpecies: string[] | null
+  /** True for density categories (Trees): hides the places-only distance-field
+   *  overlay so the surrounding basemap shows, matching the places pages. */
+  isDensity: boolean
   focusedStoreId: string | null
   onFocusHandled: () => void
 }
@@ -80,26 +83,6 @@ const typeColorExpression = [
   '#7f8c8d',
 ] as unknown as maplibregl.ExpressionSpecification
 
-// MapLibre can't clip a heatmap layer to a polygon, so the tree heatmap is
-// hard-clipped to the city outline with an inverse mask: a world rectangle
-// with the boundary punched out as holes, filled with the basemap background
-// colour. It sits just above the heatmap (hiding the radius bloom that spills
-// past the outline) and just below the boundary line (which covers the seam).
-const WORLD_RING: number[][] = [
-  [-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85],
-]
-function inverseMaskFeature(boundary: Polygon | MultiPolygon): Feature {
-  const holes =
-    boundary.type === 'Polygon'
-      ? [boundary.coordinates[0]]
-      : boundary.coordinates.map((poly) => poly[0])
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: { type: 'Polygon', coordinates: [WORLD_RING, ...holes] },
-  }
-}
-
 // MapLibre's heatmap-radius is in screen pixels. To pin it to a fixed ground
 // distance, anchor a base-2 exponential zoom interpolation: metres-per-pixel
 // halves each zoom level, so a base-2 ramp keeps the radius a constant number
@@ -116,14 +99,6 @@ function metresRadiusExpression(
     0, metres / metresPerPixel(0),
     24, metres / metresPerPixel(24),
   ] as unknown as maplibregl.ExpressionSpecification
-}
-
-// Basemap land colour, read from the style's background layer so the mask
-// matches each theme; falls back to a per-theme constant if it isn't a literal.
-function basemapBackground(map: MlMap, theme: Theme): string {
-  const bg = map.getStyle().layers.find((l) => l.type === 'background')
-  const color = bg && map.getPaintProperty(bg.id, 'background-color')
-  return typeof color === 'string' ? color : theme === 'dark' ? '#1b1d2a' : '#f3efe9'
 }
 
 // Like the address, MapLibre stringifies the categories array when read off a
@@ -268,22 +243,7 @@ function addCustomLayers(map: MlMap, theme: Theme) {
     firstSymbolId,
   )
 
-  // Inverse-boundary mask: hard-clips the heatmap to the city outline. Above
-  // the heatmap, below the boundary line. Starts empty/hidden; the mask effect
-  // fills it in density mode.
-  map.addSource('tree-mask', { type: 'geojson', data: EMPTY_FC })
-  map.addLayer(
-    {
-      id: 'tree-mask',
-      type: 'fill',
-      source: 'tree-mask',
-      layout: { visibility: 'none' },
-      paint: { 'fill-color': basemapBackground(map, theme), 'fill-opacity': 1 },
-    },
-    firstSymbolId,
-  )
-
-  // Thin outline so the overlay's clip edge (and the tree mask's) reads as
+  // Thin outline so the overlay's clip edge reads as
   // intentional — kept topmost of the below-label layers to cover the seam.
   map.addSource('boundary', { type: 'geojson', data: EMPTY_FC })
   map.addLayer(
@@ -341,6 +301,7 @@ export default function MapView({
   treePoints,
   treeRadiusM,
   activeSpecies,
+  isDensity,
   focusedStoreId,
   onFocusHandled,
 }: Props) {
@@ -598,20 +559,16 @@ export default function MapView({
     if (map.getLayer('trees-hit')) map.setFilter('trees-hit', filter)
   }, [activeSpecies, styleEpoch])
 
-  // Inverse-boundary mask follows the heatmap: shown only when a density
-  // category is active and a boundary is loaded, so the heatmap is clipped to
-  // the city outline. Without a boundary it stays hidden (heatmap unclipped).
+  // The distance field is a places-only proximity overlay. On a density (Trees)
+  // page there are no stores, so it would render a solid blue raster over the
+  // bbox; hide the layer explicitly in density mode so the basemap shows through
+  // (matching the places pages). Keyed on styleEpoch so it re-applies after a
+  // theme switch re-adds the layer visible-by-default.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || styleEpoch === 0) return
-    const source = map.getSource('tree-mask') as maplibregl.GeoJSONSource | undefined
-    if (!source) return
-    const show = !!treePoints && !!boundary
-    source.setData(show ? inverseMaskFeature(boundary) : EMPTY_FC)
-    if (map.getLayer('tree-mask')) {
-      map.setLayoutProperty('tree-mask', 'visibility', show ? 'visible' : 'none')
-    }
-  }, [treePoints, boundary, styleEpoch])
+    if (!map || styleEpoch === 0 || !map.getLayer('distance-field-layer')) return
+    map.setLayoutProperty('distance-field-layer', 'visibility', isDensity ? 'none' : 'visible')
+  }, [isDensity, styleEpoch])
 
   // Tree heatmap spread: convert the metres slider to a ground-metres radius
   // ramp at the city-centre latitude (sub-pixel at city zoom, sharpens as you

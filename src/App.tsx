@@ -391,6 +391,7 @@ export default function App() {
         maxDistance={maxDistance}
         boundary={boundary}
         treePoints={treePoints}
+        isDensity={isDensity}
         treeRadiusM={treeRadius}
         activeSpecies={activeSpecies}
         focusedStoreId={focusedStoreId}

@@ -109,17 +109,16 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   density. The "Tree spread" slider (10–50 m, `treeRadius` state, default 25)
   sets `heatmap-radius` in **ground metres** via a base-2 exponential zoom ramp
   (`metresRadiusExpression`) anchored at the city-centre latitude — so the
-  radius is sub-pixel (thin) at city zoom and sharpens as you zoom in. MapLibre
-  can't clip a heatmap to a polygon, so the heatmap is
-  hard-clipped to the city outline by an **inverse-boundary mask** (`tree-mask`
-  fill: a world rectangle with the boundary punched out as holes,
-  `inverseMaskFeature`), filled with the basemap's background colour
-  (`basemapBackground`, read from the style's `background` layer per theme) and
-  stacked just above the heatmap and just below the `boundary-line` (which
-  covers the seam). Layer order below labels is therefore distance-field →
-  trees-heat → trees-hit → tree-mask → boundary-line. Density categories
-  naturally clear the places visuals because `App.tsx` passes `stores = null`
-  for them.
+  radius is sub-pixel (thin) at city zoom and sharpens as you zoom in. The tree
+  points are clipped to the Paris boundary upstream (in the worker), so
+  the heatmap stays within the city; the `boundary-line` outlines the edge (a
+  small heatmap bloom of the spread radius may extend just past it). There is no
+  fill mask. The places-only distance-field overlay is meaningless on a density
+  page (no stores -> it would render a solid blue raster), so MapView hides
+  `distance-field-layer` whenever the `isDensity` prop is set. Layer order below
+  labels is distance-field (places only, hidden in density mode) → trees-heat →
+  trees-hit → boundary-line. Density categories also pass `stores = null`, which
+  clears the places dots.
 - Tree species (Trees density): each tree's `species_fr` / `species_en` is
   surfaced two ways. (1) **Popup**: a heatmap can't be queried for its source
   features, so an invisible `trees-hit` circle layer (same `trees` source,
