@@ -128,7 +128,15 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   in the tiles from ~z14, so labels appear as you zoom, not at city zoom. Layer
   order below labels is distance-field (places only, hidden in density mode) →
   trees-heat → trees-hit → boundary-line; `tree-park-labels` is added last (above
-  labels) so it yields to the basemap's own labels in collision. Density
+  labels) so it yields to the basemap's own labels in collision. An optional
+  **"Highlight parks & gardens"** toggle (`parkOverlay` state in `App.tsx`, a
+  checkbox in the density panel, **off by default**) draws a translucent green
+  fill over the green polygons — two `fill` layers, `tree-park-overlay-land`
+  (`landcover` class grass/wood) and `tree-park-overlay-park` (`park`
+  source-layer), inserted `beforeId: 'trees-heat'` so the heatmap still reads on
+  top. Both shown only when `isDensity && parkOverlay` (same density-visibility
+  effect, which also hides `distance-field-layer` and shows `tree-park-labels`,
+  keyed on `styleEpoch`). Density
   categories also pass `stores = null`, which clears the places dots.
 - Tree species (Trees density): each tree's `species_fr` / `species_en` is
   surfaced two ways. (1) **Popup**: a heatmap can't be queried for its source

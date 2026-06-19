@@ -174,6 +174,9 @@ export default function App() {
   // influence radius; rendered as true metres so it stays thin at city zoom
   // and sharpens as you zoom in.
   const [treeRadius, setTreeRadius] = useState(25)
+  // Optional green highlight over park/garden polygons on the Trees view.
+  // Off by default; only has an effect in density mode.
+  const [parkOverlay, setParkOverlay] = useState(false)
   // Selected tree species for the density heatmap (keyed by English name).
   // null = uninitialised → defaults to all once the point cloud loads; reset to
   // null on city/category switch so each density view starts with all selected.
@@ -392,6 +395,7 @@ export default function App() {
         boundary={boundary}
         treePoints={treePoints}
         isDensity={isDensity}
+        parkOverlay={parkOverlay}
         treeRadiusM={treeRadius}
         activeSpecies={activeSpecies}
         focusedStoreId={focusedStoreId}
@@ -492,6 +496,14 @@ export default function App() {
                   value={treeRadius}
                   onChange={(e) => setTreeRadius(Number(e.target.value))}
                 />
+              </label>
+              <label className="checkbox-control">
+                <input
+                  type="checkbox"
+                  checked={parkOverlay}
+                  onChange={(e) => setParkOverlay(e.target.checked)}
+                />
+                {t(lang, 'highlightParks')}
               </label>
             </div>
             <SpeciesFilter

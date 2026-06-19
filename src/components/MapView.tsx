@@ -38,6 +38,9 @@ interface Props {
   /** True for density categories (Trees): hides the places-only distance-field
    *  overlay so the surrounding basemap shows, matching the places pages. */
   isDensity: boolean
+  /** Trees view: when true, draw a translucent green highlight over the
+   *  park/garden polygons. Default off; only takes effect in density mode. */
+  parkOverlay: boolean
   focusedStoreId: string | null
   onFocusHandled: () => void
 }
@@ -294,6 +297,37 @@ function addCustomLayers(map: MlMap, theme: Theme) {
     },
   })
 
+  // Optional park / garden green highlight (Trees view, off by default). Two
+  // fill layers over the basemap's green polygons — the dedicated `park` layer
+  // plus `landcover` grass/wood (Paris gardens like the Luxembourg are stored as
+  // `grass`, the Bois as `wood`, not `park`). Translucent so streets/labels show
+  // through. Inserted below `trees-heat` so tree density still reads on top.
+  // Start hidden; the density-visibility effect shows them only when the
+  // `parkOverlay` toggle is on.
+  map.addLayer(
+    {
+      id: 'tree-park-overlay-land',
+      type: 'fill',
+      source: 'openmaptiles',
+      'source-layer': 'landcover',
+      filter: ['match', ['get', 'class'], ['grass', 'wood'], true, false],
+      layout: { visibility: 'none' },
+      paint: { 'fill-color': '#2e8b57', 'fill-opacity': 0.4 },
+    },
+    'trees-heat',
+  )
+  map.addLayer(
+    {
+      id: 'tree-park-overlay-park',
+      type: 'fill',
+      source: 'openmaptiles',
+      'source-layer': 'park',
+      layout: { visibility: 'none' },
+      paint: { 'fill-color': '#2e8b57', 'fill-opacity': 0.4 },
+    },
+    'trees-heat',
+  )
+
   // Park / garden name labels (Trees density view only). The basemap park/garden
   // polygons carry no names — those names live in the `poi` source-layer as
   // points — and the dark Fiord style ships no POI labels at all. So this
@@ -343,6 +377,7 @@ export default function MapView({
   treeRadiusM,
   activeSpecies,
   isDensity,
+  parkOverlay,
   focusedStoreId,
   onFocusHandled,
 }: Props) {
@@ -613,7 +648,11 @@ export default function MapView({
       map.setLayoutProperty('distance-field-layer', 'visibility', isDensity ? 'none' : 'visible')
     if (map.getLayer('tree-park-labels'))
       map.setLayoutProperty('tree-park-labels', 'visibility', isDensity ? 'visible' : 'none')
-  }, [isDensity, styleEpoch])
+    // Park/garden green highlight: only on the Trees view AND when toggled on.
+    const overlayVis = isDensity && parkOverlay ? 'visible' : 'none'
+    for (const id of ['tree-park-overlay-land', 'tree-park-overlay-park'])
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', overlayVis)
+  }, [isDensity, parkOverlay, styleEpoch])
 
   // Tree heatmap spread: convert the metres slider to a ground-metres radius
   // ramp at the city-centre latitude (sub-pixel at city zoom, sharpens as you

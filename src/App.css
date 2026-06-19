@@ -283,6 +283,21 @@ body,
   margin-top: 4px;
 }
 
+.heatmap-settings .checkbox-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #444;
+  cursor: pointer;
+}
+
+.checkbox-control input {
+  margin: 0;
+  cursor: pointer;
+}
+
 /* Tree species filter (density category) */
 .species-filter {
   margin-top: 12px;
