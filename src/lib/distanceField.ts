@@ -16,6 +16,14 @@ function chooseCellSize(spanLngM: number, spanLatM: number): number {
 
 const M_PER_DEG_LAT = 111_320
 
+/** Metres per degree of longitude at the bbox's mid-latitude (equirectangular
+ *  approximation). Shared by the grid build and the clip-path transform so the
+ *  two can't drift. */
+function metresPerDegLng(bounds: CityBounds): number {
+  const latRef = (bounds.minLat + bounds.maxLat) / 2
+  return M_PER_DEG_LAT * Math.cos((latRef * Math.PI) / 180)
+}
+
 // Colour ramp: equally-spaced RGB stops from full red (≤ minDist) to full
 // blue (≥ maxDist); intermediate stops scale proportionally between the two.
 // The blue endpoint was brightened from [20, 60, 220] → [60, 100, 255] so it
@@ -56,9 +64,6 @@ const COLOR_LUT = buildColorLut()
 
 export interface DistanceFieldResult {
   dataUrl: string
-  widthCells: number
-  heightCells: number
-  cellSizeM: number
 }
 
 /** Bucket size for the spatial index.  Must be ≥ the cell size; 500 m gives
@@ -81,10 +86,21 @@ interface DistanceGrid {
 // FeatureCollection (new identity) whenever stores or active filters change.
 let gridCache: { stores: StoreCollection; bounds: CityBounds; grid: DistanceGrid } | null = null
 
+// One reusable scratch canvas for the colorize+clip+encode pass — recreating it
+// on every ramp-slider drag is wasteful. `getContext` keeps the same context;
+// putImageData overwrites the full rect each render, so no clear is needed.
+let scratchCanvas: HTMLCanvasElement | null = null
+
+function scratchContext(w: number, h: number): CanvasRenderingContext2D {
+  const canvas = (scratchCanvas ??= document.createElement('canvas'))
+  if (canvas.width !== w) canvas.width = w
+  if (canvas.height !== h) canvas.height = h
+  return canvas.getContext('2d')!
+}
+
 function computeGrid(stores: StoreCollection, bounds: CityBounds): DistanceGrid {
   const { minLat, maxLat, minLng, maxLng } = bounds
-  const latRef = (minLat + maxLat) / 2
-  const M_PER_DEG_LNG = M_PER_DEG_LAT * Math.cos((latRef * Math.PI) / 180)
+  const M_PER_DEG_LNG = metresPerDegLng(bounds)
 
   const spanLng = (maxLng - minLng) * M_PER_DEG_LNG
   const spanLat = (maxLat - minLat) * M_PER_DEG_LAT
@@ -179,7 +195,7 @@ export function computeDistanceField(
   boundary?: Polygon | MultiPolygon | null,
 ): DistanceFieldResult {
   const { minLat, minLng } = bounds
-  const M_PER_DEG_LNG = M_PER_DEG_LAT * Math.cos(((minLat + bounds.maxLat) / 2 * Math.PI) / 180)
+  const M_PER_DEG_LNG = metresPerDegLng(bounds)
 
   let cached = gridCache
   if (!cached || cached.stores !== stores || cached.bounds !== bounds) {
@@ -188,10 +204,7 @@ export function computeDistanceField(
   }
   const { W, H, cellSizeM: CELL_M, dist } = cached.grid
 
-  const canvas = document.createElement('canvas')
-  canvas.width = W
-  canvas.height = H
-  const ctx = canvas.getContext('2d')!
+  const ctx = scratchContext(W, H)
   const imageData = ctx.createImageData(W, H)
   const px = imageData.data
 
@@ -234,10 +247,5 @@ export function computeDistanceField(
     ctx.globalCompositeOperation = 'source-over'
   }
 
-  return {
-    dataUrl: canvas.toDataURL('image/png'),
-    widthCells: W,
-    heightCells: H,
-    cellSizeM: CELL_M,
-  }
+  return { dataUrl: ctx.canvas.toDataURL('image/png') }
 }

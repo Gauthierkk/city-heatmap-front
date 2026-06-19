@@ -4,8 +4,6 @@
 
 export type Lang = 'en' | 'fr'
 
-export const LANGS: Lang[] = ['en', 'fr']
-
 /** Browser-derived default; falls back to English for anything non-French. */
 export function detectLang(): Lang {
   return typeof navigator !== 'undefined' &&
@@ -20,7 +18,6 @@ const STRINGS: Record<Lang, Record<string, string>> = {
   en: {
     // {city} and {category} mark where the two <select>s are spliced in (see titleSegments)
     title: '{city} {category} Heatmap',
-    cityAria: 'City',
     categoryAria: 'Category',
     switchLang: 'Passer en français', // names the target language, in that language
     darkMode: 'Dark mode', // theme toggle names the target mode
@@ -62,7 +59,6 @@ const STRINGS: Record<Lang, Record<string, string>> = {
   },
   fr: {
     title: '{category} à {city}',
-    cityAria: 'Ville',
     categoryAria: 'Catégorie',
     switchLang: 'Switch to English',
     darkMode: 'Mode sombre',

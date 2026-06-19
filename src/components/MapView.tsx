@@ -7,6 +7,7 @@ import { DEFAULT_CITY } from '../cities'
 import { formatAddress } from '../lib/address'
 import { computeDistanceField } from '../lib/distanceField'
 import { formatDistance, haversineMetres } from '../lib/distance'
+import { parseCategories } from '../lib/geojson'
 import type { Lang } from '../i18n'
 import { t } from '../i18n'
 import { STORE_TYPES, typeColor, typeLabel } from '../storeTypes'
@@ -49,6 +50,10 @@ const lngLatBounds = (b: CityBounds): [[number, number], [number, number]] => [
   [b.minLng, b.minLat],
   [b.maxLng, b.maxLat],
 ]
+
+// Padding (px) used for every bbox fit — initial framing, re-fit on resize, and
+// the reset-to-city fly when the address is cleared.
+const FIT_OPTS = { padding: 20 }
 
 // Four bbox corners for the raster image source (NW, NE, SE, SW)
 const imageCoords = (
@@ -111,20 +116,21 @@ function metresRadiusExpression(
   ] as unknown as maplibregl.ExpressionSpecification
 }
 
-// Like the address, MapLibre stringifies the categories array when read off a
-// rendered feature (map click); the copy from React state stays a live array.
-function parseCategories(value: unknown): string[] | null {
-  if (Array.isArray(value)) return value as string[]
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value)
-      return Array.isArray(parsed) ? parsed : null
-    } catch {
-      return null
-    }
-  }
-  return null
-}
+// HTML-escape user/data text before splicing it into a popup string.
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+// One coloured type badge (escapes its own label).
+const badge = (color: string, label: string) =>
+  `<span class="type-badge" style="background:${color}">${escapeHtml(label)}</span>`
+
+// Common popup shell: a bold title over a badge row, plus any extra rows.
+const popupShell = (title: string, badges: string, extra = '') => `
+    <div class="store-popup">
+      <strong>${escapeHtml(title)}</strong>
+      <div class="popup-badges">${badges}</div>
+      ${extra}
+    </div>`
 
 function popupHtml(
   name: string | null,
@@ -134,38 +140,27 @@ function popupHtml(
   distance: number | null,
   lang: Lang,
 ): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   // A location may carry several tags (transit hubs); show a badge per tag,
   // falling back to the single primary `shop`. Title uses the primary label.
   const cats = parseCategories(categories)
   const tags = cats && cats.length ? cats : [shop]
-  const badges = tags
-    .map((tag) => `<span class="type-badge" style="background:${typeColor(tag)}">${esc(typeLabel(tag, lang))}</span>`)
-    .join(' ')
+  const badges = tags.map((tag) => badge(typeColor(tag), typeLabel(tag, lang))).join(' ')
   const title = name ?? t(lang, 'unnamed', { type: typeLabel(shop, lang).toLowerCase() })
   const addr = formatAddress(address)
-  return `
-    <div class="store-popup">
-      <strong>${esc(title)}</strong>
-      <div class="popup-badges">${badges}</div>
-      ${addr ? `<div class="popup-address">${esc(addr)}</div>` : ''}
-      ${distance != null ? `<div class="popup-distance">${esc(t(lang, 'fromYourAddress', { d: formatDistance(distance, lang) }))}</div>` : ''}
-    </div>`
+  const extra =
+    (addr ? `<div class="popup-address">${escapeHtml(addr)}</div>` : '') +
+    (distance != null
+      ? `<div class="popup-distance">${escapeHtml(t(lang, 'fromYourAddress', { d: formatDistance(distance, lang) }))}</div>`
+      : '')
+  return popupShell(title, badges, extra)
 }
 
 // Tree species popup (density category): just the species name plus a small
 // green "Tree" badge — trees carry no address or distance-to-you. Empty species
 // (some trees have no recorded species) fall back to a localized label.
 function treePopupHtml(species: string | null | undefined, lang: Lang): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const name = species && species.trim() ? species : t(lang, 'unknownSpecies')
-  return `
-    <div class="store-popup">
-      <strong>${esc(name)}</strong>
-      <div class="popup-badges">
-        <span class="type-badge" style="background:#2e8b57">${esc(t(lang, 'tree'))}</span>
-      </div>
-    </div>`
+  return popupShell(name, badge('#2e8b57', t(lang, 'tree')))
 }
 
 // Placeholder 1×1 transparent PNG so the image source always has something
@@ -407,6 +402,25 @@ export default function MapView({
     popupRef.current = new Popup({ offset: 10 }).setLngLat([lng, lat]).setHTML(html).addTo(map)
   }
 
+  // Render a store popup at the feature's coordinate, computing distance from the
+  // current user location. Shared by the map-click handler and the results-panel
+  // focus effect (both read the live user/lang via refs).
+  const openStorePopup = (
+    map: MlMap,
+    lng: number,
+    lat: number,
+    props: { name?: string | null; shop: string; categories?: unknown; address?: unknown },
+  ) => {
+    const u = userRef.current
+    const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
+    showPopup(
+      map,
+      lng,
+      lat,
+      popupHtml(props.name ?? null, props.shop, props.categories, props.address, distance, langRef.current),
+    )
+  }
+
   // Initialise the map once (initial theme via ref; theme switches are
   // handled by the setStyle effect below, never by re-creating the map)
   useEffect(() => {
@@ -417,7 +431,7 @@ export default function MapView({
       // The city-framing effect below applies the real per-city camera and
       // navigation clip once the map is ready
       bounds: lngLatBounds(DEFAULT_CITY.bounds),
-      fitBoundsOptions: { padding: 20 },
+      fitBoundsOptions: FIT_OPTS,
       attributionControl: {
         // Both OpenFreeMap styles carry OSM attribution in their sources; we
         // add OpenFreeMap explicitly to satisfy both license requirements.
@@ -438,9 +452,7 @@ export default function MapView({
         const feature = e.features?.[0]
         if (!feature) return
         const [lng, lat] = (feature.geometry as Point).coordinates
-        const u = userRef.current
-        const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
-        showPopup(map, lng, lat, popupHtml(feature.properties.name ?? null, feature.properties.shop, feature.properties.categories, feature.properties.address, distance, langRef.current))
+        openStorePopup(map, lng, lat, feature.properties as Parameters<typeof openStorePopup>[3])
       })
 
       map.on('mouseenter', 'store-points', () => (map.getCanvas().style.cursor = 'pointer'))
@@ -515,7 +527,7 @@ export default function MapView({
       // Lift the previous clip so the new fit isn't fought by it
       map.setMaxBounds(null)
       map.setMinZoom(null)
-      const camera = map.cameraForBounds(lngLatBounds(city.bounds), { padding: 20 })
+      const camera = map.cameraForBounds(lngLatBounds(city.bounds), FIT_OPTS)
       if (!camera) return
       map.jumpTo(camera)
       // small epsilon keeps the fitted zoom itself reachable
@@ -681,7 +693,7 @@ export default function MapView({
         .addTo(map)
       map.flyTo({ center: [user.lng, user.lat], zoom: 14 })
     } else if (prevUserRef.current) {
-      map.fitBounds(lngLatBounds(city.bounds), { padding: 20 })
+      map.fitBounds(lngLatBounds(city.bounds), FIT_OPTS)
     }
     prevUserRef.current = user
   }, [user, city, mapReady])
@@ -701,10 +713,8 @@ export default function MapView({
     const feature = stores.features.find((f) => f.properties.id === focusedStoreId)
     if (feature) {
       const [lng, lat] = feature.geometry.coordinates
-      const u = userRef.current
-      const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
       map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16) })
-      showPopup(map, lng, lat, popupHtml(feature.properties.name, feature.properties.shop, feature.properties.categories, feature.properties.address, distance, langRef.current))
+      openStorePopup(map, lng, lat, feature.properties)
     }
     onFocusHandled()
   }, [focusedStoreId, stores, mapReady, onFocusHandled])

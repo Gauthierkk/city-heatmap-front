@@ -12,7 +12,6 @@ export interface StoreProperties {
   id: string
   name: string | null
   shop: string
-  source?: 'osm' | 'overture'
   address?: StoreAddress
   /** Transit only: all modes the station serves (metro/rer/tram/train/…).
    *  `shop` is the primary one; this keeps the full set for the popup. */
@@ -30,7 +29,6 @@ export interface StoreFeature {
 
 export interface StoreCollection {
   type: 'FeatureCollection'
-  generated?: string
   features: StoreFeature[]
 }
 
@@ -48,6 +46,14 @@ export interface RankedStore {
 /** Basemap theme. Seeded once from `prefers-color-scheme` at startup (not
  *  live-tracked), never persisted — consistent with the no-storage stance. */
 export type Theme = 'light' | 'dark'
+
+/** OS-derived default basemap theme; read once at startup, not live-tracked. */
+export function detectTheme(): Theme {
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light'
+}
 
 /** Distance ramp defaults (decision #3): cells ≤ min show full red, cells
  *  ≥ max show full blue. Both are user-adjustable in the heatmap settings.

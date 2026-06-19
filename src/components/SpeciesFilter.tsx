@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react'
 import type { Lang } from '../i18n'
-import { locale, t as translate } from '../i18n'
+import { locale, t } from '../i18n'
 
 export interface SpeciesEntry {
   /** Stable key — the English species name (empty string = unknown species). */
@@ -49,8 +49,8 @@ function SpeciesFilter({ species, active, lang, onChange }: Props) {
 
   const summary =
     selectedCount >= species.length
-      ? translate(lang, 'allSpecies')
-      : translate(lang, 'speciesSelected', { n: selectedCount, total: species.length })
+      ? t(lang, 'allSpecies')
+      : t(lang, 'speciesSelected', { n: selectedCount, total: species.length })
 
   return (
     <div className="species-filter">
@@ -61,7 +61,7 @@ function SpeciesFilter({ species, active, lang, onChange }: Props) {
         onClick={() => setOpen((v) => !v)}
       >
         <span>
-          {translate(lang, 'speciesFilter')}: {summary}
+          {t(lang, 'speciesFilter')}: {summary}
         </span>
         <span className="species-chevron" aria-hidden="true">
           {open ? '▴' : '▾'}
@@ -73,21 +73,21 @@ function SpeciesFilter({ species, active, lang, onChange }: Props) {
             className="species-search"
             type="search"
             value={query}
-            placeholder={translate(lang, 'searchSpecies')}
-            aria-label={translate(lang, 'searchSpecies')}
+            placeholder={t(lang, 'searchSpecies')}
+            aria-label={t(lang, 'searchSpecies')}
             onChange={(e) => setQuery(e.target.value)}
           />
           <div className="filter-actions">
             <button type="button" onClick={() => onChange(new Set(allKeys))}>
-              {translate(lang, 'selectAll')}
+              {t(lang, 'selectAll')}
             </button>
             <button type="button" onClick={() => onChange(new Set())}>
-              {translate(lang, 'clearAll')}
+              {t(lang, 'clearAll')}
             </button>
           </div>
-          <ul className="species-list" role="group" aria-label={translate(lang, 'speciesFilter')}>
+          <ul className="species-list" role="group" aria-label={t(lang, 'speciesFilter')}>
             {filtered.length === 0 && (
-              <li className="species-empty">{translate(lang, 'noSpeciesMatch')}</li>
+              <li className="species-empty">{t(lang, 'noSpeciesMatch')}</li>
             )}
             {filtered.map((s) => (
               <li key={s.key}>

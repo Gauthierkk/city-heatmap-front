@@ -1,146 +1,26 @@
-import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon, Position } from 'geojson'
+import type { FeatureCollection, MultiPolygon, Point, Polygon } from 'geojson'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_CITY, cityById } from './cities'
 import AddressSearch from './components/AddressSearch'
 import FilterBar from './components/FilterBar'
 import MapView from './components/MapView'
+import RangeControl from './components/RangeControl'
 import ResultsPanel from './components/ResultsPanel'
 import SpeciesFilter from './components/SpeciesFilter'
 import { type Lang, detectLang, locale, t, titleSegments } from './i18n'
 import { haversineMetres } from './lib/distance'
+import { extractBoundary, extractTreePoints, sameTagSet, storeTags, withShopTags } from './lib/geojson'
+import { fetchJson } from './lib/http'
 import {
   CATEGORIES,
   DEFAULT_CATEGORY,
-  MAJOR_STATION_TAG,
   categoryById,
-  primaryTransitType,
   tagsForCategory,
   typesForCategory,
   type CategoryId,
 } from './storeTypes'
-import type { RankedStore, StoreCollection, StoreProperties, Theme, UserLocation } from './types'
-import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M } from './types'
-
-/** OS-derived default basemap theme; read once at startup, not live-tracked. */
-function detectTheme(): Theme {
-  return typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
-}
-
-// True when two tag sets are equal — lets us no-op identical filter updates
-// (e.g. "Select all" when everything is already active) so the memoised
-// filtered collection and the distance-field overlay don't needlessly recompute.
-function sameTagSet(a: Set<string>, b: Set<string>): boolean {
-  if (a === b) return true
-  if (a.size !== b.size) return false
-  for (const tag of a) if (!b.has(tag)) return false
-  return true
-}
-
-// Accepts a bare geometry, Feature, or FeatureCollection boundary file
-function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
-  const obj = data as {
-    type?: string
-    geometry?: { type?: string }
-    features?: Array<{ geometry?: { type?: string } }>
-  } | null
-  const geom =
-    obj?.type === 'Feature' ? obj.geometry :
-    obj?.type === 'FeatureCollection' ? obj.features?.[0]?.geometry :
-    obj
-  return geom?.type === 'Polygon' || geom?.type === 'MultiPolygon'
-    ? (geom as Polygon | MultiPolygon)
-    : null
-}
-
-// A location can carry several tags (e.g. a transit hub serving metro + RER +
-// train), so it should match any of them when filtering. `categories[]` holds
-// the full set; shop data has just the single `shop`. `shop` stays the primary
-// tag (dot colour/label); these are the tags used for filtering and counts.
-function storeTags(p: StoreProperties): string[] {
-  return p.categories && p.categories.length ? p.categories : [p.shop]
-}
-
-// Transit stations ship a `categories[]` array instead of a single `shop`
-// tag. On load, derive a primary `shop` so they flow through the same
-// single-type machinery as shops, and split out `major_station` — it's a size
-// flag (`major`), not a mode, so it's dropped from the modes used as tags.
-// No-op for files that already carry `shop` (food/fitness).
-function withShopTags(data: StoreCollection): StoreCollection {
-  if (!data.features.some((f) => !f.properties.shop && Array.isArray(f.properties.categories)))
-    return data
-  return {
-    ...data,
-    features: data.features.map((f) => {
-      const p = f.properties
-      if (p.shop || !Array.isArray(p.categories)) return f
-      const major = p.categories.includes(MAJOR_STATION_TAG)
-      const modes = p.categories.filter((c) => c !== MAJOR_STATION_TAG)
-      return { ...f, properties: { ...p, categories: modes, shop: primaryTransitType(modes), major } }
-    }),
-  }
-}
-
-// Tree files are normalised into a FeatureCollection of Point features, each
-// carrying its species (species_fr / species_en) so every coordinate is bound to
-// a name and the heatmap / species filter consume one shape. Three on-disk forms
-// are accepted: the compact `trees-columnar-v1` payload (a species lookup table +
-// parallel coordinate / index arrays — the worker's current output), a plain
-// FeatureCollection, and a legacy bare MultiPoint. Returns null if the payload
-// holds no usable points.
-function extractTreePoints(data: unknown): FeatureCollection<Point> | null {
-  type GeomLike = { type?: string; coordinates?: Position[] }
-  const obj = data as {
-    type?: string
-    format?: string
-    geometry?: GeomLike
-    features?: Array<{ geometry?: { type?: string } }>
-  } | null
-
-  // Columnar format: a frequency-sorted species table indexed per point. Expand
-  // into Point features, resolving each species from the table — the assigned
-  // strings are the table's own references, so no per-point string copies.
-  if (obj?.format === 'trees-columnar-v1') {
-    const { species, coordinates, speciesIndex } = obj as unknown as {
-      species?: { fr?: string; en?: string }[]
-      coordinates?: Position[]
-      speciesIndex?: number[]
-    }
-    if (!Array.isArray(species) || !Array.isArray(coordinates) || !Array.isArray(speciesIndex)) {
-      return null
-    }
-    const features = coordinates.map((coords, i): Feature<Point> => {
-      const sp = species[speciesIndex[i]] ?? { fr: '', en: '' }
-      return {
-        type: 'Feature',
-        properties: { species_fr: sp.fr ?? '', species_en: sp.en ?? '' },
-        geometry: { type: 'Point', coordinates: coords },
-      }
-    })
-    return features.length ? { type: 'FeatureCollection', features } : null
-  }
-
-  if (obj?.type === 'FeatureCollection' && Array.isArray(obj.features)) {
-    const points = (obj.features as Feature[]).filter((f) => f.geometry?.type === 'Point')
-    return points.length ? { type: 'FeatureCollection', features: points as Feature<Point>[] } : null
-  }
-
-  // Legacy MultiPoint (bare or Feature-wrapped): explode into Point features.
-  const geom: GeomLike | null | undefined = obj?.type === 'Feature' ? obj.geometry : (obj as GeomLike | null)
-  if (geom?.type === 'MultiPoint' && Array.isArray(geom.coordinates)) {
-    return {
-      type: 'FeatureCollection',
-      features: geom.coordinates.map((coordinates) => ({
-        type: 'Feature' as const,
-        properties: {},
-        geometry: { type: 'Point' as const, coordinates },
-      })),
-    }
-  }
-  return null
-}
+import type { RankedStore, StoreCollection, Theme, UserLocation } from './types'
+import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M, detectTheme } from './types'
 
 export default function App() {
   // City is fixed to Paris (NYC/Austin are deprecated; the selector is disabled),
@@ -180,7 +60,8 @@ export default function App() {
   // Off by default; only has an effect in density mode.
   const [parkOverlay, setParkOverlay] = useState(false)
   // Selected tree species for the density heatmap (keyed by English name).
-  // null = uninitialised → defaults to all once the point cloud loads; reset to
+  // null = nothing toggled yet, treated as all-selected everywhere (no filter:
+  // activeSpecies stays null and SpeciesFilter renders all checked); reset to
   // null on city/category switch so each density view starts with all selected.
   const [speciesSel, setSpeciesSel] = useState<Set<string> | null>(null)
   const [focusedStoreId, setFocusedStoreId] = useState<string | null>(null)
@@ -240,22 +121,11 @@ export default function App() {
     return [...speciesSel]
   }, [speciesSel, speciesCounts])
 
-  // Default the selection to all species once the point cloud loads for a
-  // density view (speciesSel is reset to null on every city/category switch).
-  useEffect(() => {
-    if (!isDensity || speciesSel !== null || !speciesCounts) return
-    setSpeciesSel(new Set(speciesCounts.keys()))
-  }, [isDensity, speciesSel, speciesCounts])
-
   useEffect(() => {
     if (!sourceFile || storesBySource[sourceFile]) return
     let cancelled = false
-    fetch(`${import.meta.env.BASE_URL}${sourceFile}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then((data: StoreCollection) => {
+    fetchJson<StoreCollection>(sourceFile)
+      .then((data) => {
         if (!cancelled) setStoresBySource((prev) => ({ ...prev, [sourceFile]: withShopTags(data) }))
       })
       .catch((err) => {
@@ -275,11 +145,7 @@ export default function App() {
     const file = city.storesFiles[category.source]
     if (!file) return
     let cancelled = false
-    fetch(`${import.meta.env.BASE_URL}${file}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
+    fetchJson(file)
       .then((data) => {
         if (!cancelled) setTreesByCity((prev) => ({ ...prev, [city.id]: extractTreePoints(data) }))
       })
@@ -298,11 +164,7 @@ export default function App() {
   useEffect(() => {
     if (city.id in boundaryByCity) return
     let cancelled = false
-    fetch(`${import.meta.env.BASE_URL}${city.boundaryFile}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
+    fetchJson(city.boundaryFile)
       .then((data) => {
         if (!cancelled) setBoundaryByCity((prev) => ({ ...prev, [city.id]: extractBoundary(data) }))
       })
@@ -352,6 +214,13 @@ export default function App() {
       storeTags(f.properties).some((tag) => categoryTagSet.has(tag)),
     ).length
   }, [stores, categoryTagSet])
+
+  // Categories offered for this city — only those with a data file. Memoised so
+  // the title <select> doesn't allocate a fresh array on every render.
+  const availableCategories = useMemo(
+    () => CATEGORIES.filter((c) => city.storesFiles[c.source]),
+    [city],
+  )
 
   const ranked: RankedStore[] = useMemo(() => {
     if (!filteredStores || !user) return []
@@ -439,7 +308,7 @@ export default function App() {
                     aria-label={t(lang, 'categoryAria')}
                     onChange={(e) => switchCategory(e.target.value)}
                   >
-                    {CATEGORIES.filter((c) => city.storesFiles[c.source]).map((c) => (
+                    {availableCategories.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label[lang]}
                       </option>
@@ -461,17 +330,14 @@ export default function App() {
             {loadError && <p className="error">{t(lang, 'loadError', { msg: loadError })}</p>}
             <p className="hint">{t(lang, 'treesHint', { city: city.label })}</p>
             <div className="heatmap-settings">
-              <label className="opacity-control">
-                {t(lang, 'treeRadius', { n: treeRadius })}
-                <input
-                  type="range"
-                  min={10}
-                  max={50}
-                  step={5}
-                  value={treeRadius}
-                  onChange={(e) => setTreeRadius(Number(e.target.value))}
-                />
-              </label>
+              <RangeControl
+                label={t(lang, 'treeRadius', { n: treeRadius })}
+                min={10}
+                max={50}
+                step={5}
+                value={treeRadius}
+                onChange={setTreeRadius}
+              />
               <label className="checkbox-control">
                 <input
                   type="checkbox"
@@ -505,38 +371,29 @@ export default function App() {
             <FilterBar types={categoryTypes} activeTags={activeTags} lang={lang} onChange={handleTagsChange} />
             <div className="heatmap-settings">
               <h2>{t(lang, 'heatmapSettings')}</h2>
-              <label className="opacity-control">
-                {t(lang, 'redWithin', { n: minDistance })}
-                <input
-                  type="range"
-                  min={10}
-                  max={50}
-                  step={10}
-                  value={minDistance}
-                  onChange={(e) => setMinDistance(Number(e.target.value))}
-                />
-              </label>
-              <label className="opacity-control">
-                {t(lang, 'blueBeyond', { n: maxDistance })}
-                <input
-                  type="range"
-                  min={100}
-                  max={HEAT_RAMP_MAX_M}
-                  step={50}
-                  value={maxDistance}
-                  onChange={(e) => setMaxDistance(Number(e.target.value))}
-                />
-              </label>
-              <label className="opacity-control">
-                {t(lang, 'opacity', { n: Math.round(heatOpacity * 100) })}
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round(heatOpacity * 100)}
-                  onChange={(e) => setHeatOpacity(Number(e.target.value) / 100)}
-                />
-              </label>
+              <RangeControl
+                label={t(lang, 'redWithin', { n: minDistance })}
+                min={10}
+                max={50}
+                step={10}
+                value={minDistance}
+                onChange={setMinDistance}
+              />
+              <RangeControl
+                label={t(lang, 'blueBeyond', { n: maxDistance })}
+                min={100}
+                max={HEAT_RAMP_MAX_M}
+                step={50}
+                value={maxDistance}
+                onChange={setMaxDistance}
+              />
+              <RangeControl
+                label={t(lang, 'opacity', { n: Math.round(heatOpacity * 100) })}
+                min={0}
+                max={100}
+                value={Math.round(heatOpacity * 100)}
+                onChange={(v) => setHeatOpacity(v / 100)}
+              />
             </div>
             {user && <ResultsPanel ranked={ranked} lang={lang} onSelect={setFocusedStoreId} />}
             {!user && stores && (
