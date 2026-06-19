@@ -110,10 +110,10 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   sets `heatmap-radius` in **ground metres** via a base-2 exponential zoom ramp
   (`metresRadiusExpression`) anchored at the city-centre latitude — so the
   radius is sub-pixel (thin) at city zoom and sharpens as you zoom in. The tree
-  points are clipped to the Paris boundary upstream (in the worker), so
-  the heatmap stays within the city; the `boundary-line` outlines the edge (a
-  small heatmap bloom of the spread radius may extend just past it). There is no
-  fill mask. The places-only distance-field overlay is meaningless on a density
+  points come from a Paris-only source (and are boundary-checked upstream in the
+  worker pipeline), so the heatmap stays within the city; the `boundary-line`
+  outlines the edge (a small heatmap bloom of the spread radius may extend just
+  past it). There is no fill mask. The places-only distance-field overlay is meaningless on a density
   page (no stores -> it would render a solid blue raster), so MapView hides
   `distance-field-layer` whenever the `isDensity` prop is set. Layer order below
   labels is distance-field (places only, hidden in density mode) → trees-heat →
