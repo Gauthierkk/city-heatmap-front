@@ -5,6 +5,7 @@ import { formatAddress } from '../lib/address'
 import { formatDistance } from '../lib/distance'
 import { typeColor, typeLabel } from '../storeTypes'
 import type { RankedStore } from '../types'
+import LineBullets from './LineBullets'
 
 interface Props {
   ranked: RankedStore[]
@@ -27,6 +28,7 @@ function ResultsPanel({ ranked, lang, onSelect }: Props) {
         {visible.map(({ feature, distance }) => {
           const label = typeLabel(feature.properties.shop, lang)
           const address = formatAddress(feature.properties.address)
+          const lines = feature.properties.lines
           return (
             <li key={feature.properties.id}>
               <button className="result-row" onClick={() => onSelect(feature.properties.id)}>
@@ -36,12 +38,16 @@ function ResultsPanel({ ranked, lang, onSelect }: Props) {
                   </span>
                   {address && <span className="result-address">{address}</span>}
                 </span>
-                <span
-                  className="type-badge"
-                  style={{ backgroundColor: typeColor(feature.properties.shop) }}
-                >
-                  {label}
-                </span>
+                {lines && lines.length ? (
+                  <LineBullets lines={lines} lang={lang} />
+                ) : (
+                  <span
+                    className="type-badge"
+                    style={{ backgroundColor: typeColor(feature.properties.shop) }}
+                  >
+                    {label}
+                  </span>
+                )}
                 <span className="result-distance">{formatDistance(distance, lang)}</span>
               </button>
             </li>

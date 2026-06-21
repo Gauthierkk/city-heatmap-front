@@ -525,6 +525,40 @@ body,
   color: #555;
 }
 
+/* Transit line bullets — official IDFM pictograms in the results list + popup */
+.line-bullets {
+  flex: none;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+
+.line-bullet {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.popup-badges .line-bullet {
+  width: 20px;
+  height: 20px;
+}
+
+/* Fallback for the few source lines with no pictogram (e.g. the funicular) */
+.line-bullet-text {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #6b7280;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
 /* Mobile: panel becomes a top sheet, pills scroll horizontally */
 @media (max-width: 600px) {
   .panel {

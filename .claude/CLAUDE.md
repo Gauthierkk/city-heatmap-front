@@ -97,8 +97,18 @@ and commit them. See the worker's README for the pipeline, guards, and runbook.
   the type-filter and the category count match a feature if **any** of its tags
   is active, so a hub shows under every mode it serves. The popup renders one
   badge per tag (`parseCategories` un-stringifies the array MapLibre serialises
-  on map clicks); the closest-list row keeps just the primary badge for
-  compactness. No distanceField changes. Stations carry no address.
+  on map clicks). No distanceField changes. Stations carry no address.
+  **Lines:** each station also ships `lines: {mode, line, picto}[]` (the worker's
+  `transit.py`) — the actual lines it serves, each with the official IDFM
+  pictogram filename. The **popup** and the **closest-stations list** render
+  these as line bullets (`<img src="${BASE_URL}lines/<picto>">`, the SVGs live in
+  `public/lines/`) via the shared `lineBulletSrc`/`lineLabel` in
+  `lib/transitLines.ts` — `lineBulletsHtml` (popup HTML string) and the
+  `LineBullets` component (React list). Lines with no source pictogram (e.g. the
+  Montmartre funicular) fall back to a text bullet. In the popup the line bullets
+  **replace** the mode badges; major-station `lines` are metro + RER only (the
+  worker drops mainline trains). `parseLines` un-stringifies the array on map
+  clicks, like `parseCategories`.
 - Trees (density category): `data/places/<city>/trees.geojson` is the compact
   **`trees-columnar-v1`** payload — a frequency-sorted `species` lookup table
   (`[{fr, en}, …]`) plus parallel `coordinates` / `speciesIndex` arrays (~3.7 MB

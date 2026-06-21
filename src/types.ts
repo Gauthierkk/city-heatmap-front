@@ -8,6 +8,15 @@ export interface StoreAddress {
   city?: string
 }
 
+/** Transit only: one actual line a station serves, with the official IDFM
+ *  pictogram filename (in `public/lines/`) the UI renders as the line bullet.
+ *  `picto` is '' for the few source lines with no pictogram (text fallback). */
+export interface TransitLine {
+  mode: string
+  line: string
+  picto: string
+}
+
 export interface StoreProperties {
   id: string
   name: string | null
@@ -16,6 +25,10 @@ export interface StoreProperties {
   /** Transit only: all modes the station serves (metro/rer/tram/train/…).
    *  `shop` is the primary one; this keeps the full set for the popup. */
   categories?: string[]
+  /** Transit only: the actual lines the station serves (ordered), shown as
+   *  official line bullets in the popup and the closest-stations list. At major
+   *  stations this is metro + RER only (mainline trains dropped upstream). */
+  lines?: TransitLine[]
   /** Transit only: a major hub (Paris gare) — rendered as a double-size dot,
    *  not a filterable mode. Derived on load from the `major_station` tag. */
   major?: boolean

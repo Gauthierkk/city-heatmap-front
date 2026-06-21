@@ -1,6 +1,6 @@
 import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon, Position } from 'geojson'
 import { MAJOR_STATION_TAG, primaryTransitType } from '../storeTypes'
-import type { StoreCollection, StoreProperties } from '../types'
+import type { StoreCollection, StoreProperties, TransitLine } from '../types'
 
 // Pure data-shaping helpers for the GeoJSON the app loads. Kept out of the
 // components (App/MapView) so they stay small and these stay trivially testable.
@@ -31,6 +31,21 @@ export function parseCategories(value: unknown): string[] | null {
     try {
       const parsed = JSON.parse(value)
       return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+// Transit `lines` array — same MapLibre-stringification dance as parseCategories,
+// but each element is a {mode, line, picto} object.
+export function parseLines(value: unknown): TransitLine[] | null {
+  if (Array.isArray(value)) return value as TransitLine[]
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return Array.isArray(parsed) ? (parsed as TransitLine[]) : null
     } catch {
       return null
     }

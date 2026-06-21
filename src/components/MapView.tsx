@@ -7,11 +7,12 @@ import { DEFAULT_CITY } from '../cities'
 import { formatAddress } from '../lib/address'
 import { computeDistanceField } from '../lib/distanceField'
 import { formatDistance, haversineMetres } from '../lib/distance'
-import { parseCategories } from '../lib/geojson'
+import { parseCategories, parseLines } from '../lib/geojson'
+import { lineBulletSrc, lineLabel } from '../lib/transitLines'
 import type { Lang } from '../i18n'
 import { t } from '../i18n'
 import { STORE_TYPES, typeColor, typeLabel } from '../storeTypes'
-import type { StoreCollection, Theme, UserLocation } from '../types'
+import type { StoreCollection, Theme, TransitLine, UserLocation } from '../types'
 
 interface Props {
   city: CityDef
@@ -132,19 +133,39 @@ const popupShell = (title: string, badges: string, extra = '') => `
       ${extra}
     </div>`
 
+// Transit line bullets (the HTML-string twin of the LineBullets component).
+// Lines with no source pictogram fall back to a small text bullet.
+function lineBulletsHtml(lines: TransitLine[], lang: Lang): string {
+  return lines
+    .map((l) => {
+      const label = escapeHtml(lineLabel(l, lang))
+      const src = lineBulletSrc(l.picto)
+      return src
+        ? `<img class="line-bullet" src="${src}" alt="${label}" title="${label}" />`
+        : `<span class="line-bullet-text" title="${label}">${escapeHtml(l.line)}</span>`
+    })
+    .join('')
+}
+
 function popupHtml(
   name: string | null,
   shop: string,
   categories: unknown,
+  lines: unknown,
   address: unknown,
   distance: number | null,
   lang: Lang,
 ): string {
-  // A location may carry several tags (transit hubs); show a badge per tag,
-  // falling back to the single primary `shop`. Title uses the primary label.
+  // Transit stations show their actual lines as official bullets; everything
+  // else shows a badge per tag (transit hubs can carry several), falling back to
+  // the single primary `shop`. Title uses the primary label.
+  const lineList = parseLines(lines)
   const cats = parseCategories(categories)
   const tags = cats && cats.length ? cats : [shop]
-  const badges = tags.map((tag) => badge(typeColor(tag), typeLabel(tag, lang))).join(' ')
+  const badges =
+    lineList && lineList.length
+      ? lineBulletsHtml(lineList, lang)
+      : tags.map((tag) => badge(typeColor(tag), typeLabel(tag, lang))).join(' ')
   const title = name ?? t(lang, 'unnamed', { type: typeLabel(shop, lang).toLowerCase() })
   const addr = formatAddress(address)
   const extra =
@@ -409,7 +430,7 @@ export default function MapView({
     map: MlMap,
     lng: number,
     lat: number,
-    props: { name?: string | null; shop: string; categories?: unknown; address?: unknown },
+    props: { name?: string | null; shop: string; categories?: unknown; lines?: unknown; address?: unknown },
   ) => {
     const u = userRef.current
     const distance = u ? haversineMetres(u.lng, u.lat, lng, lat) : null
@@ -417,7 +438,7 @@ export default function MapView({
       map,
       lng,
       lat,
-      popupHtml(props.name ?? null, props.shop, props.categories, props.address, distance, langRef.current),
+      popupHtml(props.name ?? null, props.shop, props.categories, props.lines, props.address, distance, langRef.current),
     )
   }
 
