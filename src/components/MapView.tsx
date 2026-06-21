@@ -315,7 +315,11 @@ function addCustomLayers(map: MlMap, theme: Theme) {
       paint: {
         'line-color': ['get', 'color'],
         'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 13, 3, 16, 5],
-        'line-opacity': 0.9,
+        // Full opacity: the source splits each line into ~25–36 segments (454
+        // shared joins), so a sub-1 opacity composites every joint + crossing
+        // into a darker blotch. At opacity 1 overlapping same-colour strokes are
+        // idempotent and crossings cover cleanly.
+        'line-opacity': 1,
       },
     },
     firstSymbolId,
