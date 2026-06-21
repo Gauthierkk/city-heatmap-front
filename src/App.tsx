@@ -42,6 +42,8 @@ export default function App() {
   // Tree point cloud per city for density categories; null = unavailable. Each
   // feature is a Point carrying its species (species_fr / species_en).
   const [treesByCity, setTreesByCity] = useState<Record<string, FeatureCollection<Point> | null>>({})
+  // Rail-line route geometry per city for the Transit view; null = unavailable.
+  const [transitLinesByCity, setTransitLinesByCity] = useState<Record<string, FeatureCollection | null>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [user, setUser] = useState<UserLocation | null>(null)
   const [activeTags, setActiveTags] = useState<Set<string>>(
@@ -50,6 +52,8 @@ export default function App() {
   // Slightly reduced from 0.7 → 0.65 for Fiord dark basemap: overlay colours
   // are vivid enough at 0.65 and bleed less into the navy background.
   const [heatOpacity, setHeatOpacity] = useState(0.65)
+  // Distance overlay on/off (the "heatmap"); default on, toggled from the panel.
+  const [showHeatmap, setShowHeatmap] = useState(true)
   const [minDistance, setMinDistance] = useState(HEAT_MIN_M)
   const [maxDistance, setMaxDistance] = useState(HEAT_CUTOFF_M)
   // Tree heatmap spread, in ground metres (density categories). Each tree's
@@ -83,6 +87,10 @@ export default function App() {
   const boundary = city.id in boundaryByCity ? boundaryByCity[city.id] : undefined
   // Tree point cloud for the active density category (null = none/loading)
   const treePoints = isDensity ? treesByCity[city.id] ?? null : null
+  // Rail-line geometry for the Transit view (null = none/loading); only fetched
+  // and drawn when the Transit category is active.
+  const isTransit = category.source === 'transit'
+  const transitLines = isTransit ? transitLinesByCity[city.id] ?? null : null
 
   // Distinct species in the active point cloud, keyed by English name (the
   // stable id used for filtering); each carries both names + a count. Language-
@@ -176,6 +184,26 @@ export default function App() {
     }
   }, [city, boundaryByCity])
 
+  // Lazy-load the rail-line geometry the first time the Transit view is shown for
+  // a city that ships it. Mirrors the boundary fetch: cached per city, fail-soft
+  // to null (the lines simply don't render).
+  useEffect(() => {
+    if (!isTransit || city.id in transitLinesByCity) return
+    const file = city.transitLinesFile
+    if (!file) return
+    let cancelled = false
+    fetchJson<FeatureCollection>(file)
+      .then((data) => {
+        if (!cancelled) setTransitLinesByCity((prev) => ({ ...prev, [city.id]: data }))
+      })
+      .catch(() => {
+        if (!cancelled) setTransitLinesByCity((prev) => ({ ...prev, [city.id]: null }))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isTransit, city, transitLinesByCity])
+
   function switchCategory(id: string) {
     if (id === categoryId) return
     setCategoryId(id as CategoryId)
@@ -246,9 +274,11 @@ export default function App() {
         lang={lang}
         theme={theme}
         heatOpacity={heatOpacity}
+        showHeatmap={showHeatmap}
         minDistance={minDistance}
         maxDistance={maxDistance}
         boundary={boundary}
+        transitLines={transitLines}
         treePoints={treePoints}
         isDensity={isDensity}
         parkOverlay={parkOverlay}
@@ -371,29 +401,41 @@ export default function App() {
             <FilterBar types={categoryTypes} activeTags={activeTags} lang={lang} onChange={handleTagsChange} />
             <div className="heatmap-settings">
               <h2>{t(lang, 'heatmapSettings')}</h2>
-              <RangeControl
-                label={t(lang, 'redWithin', { n: minDistance })}
-                min={10}
-                max={50}
-                step={10}
-                value={minDistance}
-                onChange={setMinDistance}
-              />
-              <RangeControl
-                label={t(lang, 'blueBeyond', { n: maxDistance })}
-                min={100}
-                max={HEAT_RAMP_MAX_M}
-                step={50}
-                value={maxDistance}
-                onChange={setMaxDistance}
-              />
-              <RangeControl
-                label={t(lang, 'opacity', { n: Math.round(heatOpacity * 100) })}
-                min={0}
-                max={100}
-                value={Math.round(heatOpacity * 100)}
-                onChange={(v) => setHeatOpacity(v / 100)}
-              />
+              <label className="checkbox-control">
+                <input
+                  type="checkbox"
+                  checked={showHeatmap}
+                  onChange={(e) => setShowHeatmap(e.target.checked)}
+                />
+                {t(lang, 'showHeatmap')}
+              </label>
+              {showHeatmap && (
+                <>
+                  <RangeControl
+                    label={t(lang, 'redWithin', { n: minDistance })}
+                    min={10}
+                    max={50}
+                    step={10}
+                    value={minDistance}
+                    onChange={setMinDistance}
+                  />
+                  <RangeControl
+                    label={t(lang, 'blueBeyond', { n: maxDistance })}
+                    min={100}
+                    max={HEAT_RAMP_MAX_M}
+                    step={50}
+                    value={maxDistance}
+                    onChange={setMaxDistance}
+                  />
+                  <RangeControl
+                    label={t(lang, 'opacity', { n: Math.round(heatOpacity * 100) })}
+                    min={0}
+                    max={100}
+                    value={Math.round(heatOpacity * 100)}
+                    onChange={(v) => setHeatOpacity(v / 100)}
+                  />
+                </>
+              )}
             </div>
             {user && <ResultsPanel ranked={ranked} lang={lang} onSelect={setFocusedStoreId} />}
             {!user && stores && (

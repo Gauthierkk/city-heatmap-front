@@ -21,6 +21,8 @@ interface Props {
   lang: Lang
   theme: Theme
   heatOpacity: number
+  /** Distance overlay on/off — hides the distance-field raster when false. */
+  showHeatmap: boolean
   /** Ramp: cells at/below this distance (m) are full red */
   minDistance: number
   /** Ramp: cells at/beyond this distance (m) are full blue */
@@ -28,6 +30,9 @@ interface Props {
   /** City admin boundary clipping the overlay: undefined = still loading,
    *  null = unavailable (render unclipped) */
   boundary: Polygon | MultiPolygon | null | undefined
+  /** Transit only: rail-line route geometry (LineStrings coloured per line),
+   *  drawn under the dots. null = not transit, or still loading. */
+  transitLines: FeatureCollection | null
   /** Active density category's point cloud (Trees): a FeatureCollection of Point
    *  features (each with its species), rendered as a heatmap, no dots/labels.
    *  null = not a density category, or still loading. */
@@ -97,6 +102,16 @@ const typeColorExpression = [
   ['get', 'shop'],
   ...STORE_TYPES.flatMap((t) => [t.tag, t.color]),
   '#7f8c8d',
+] as unknown as maplibregl.ExpressionSpecification
+
+// Transit station dots render white (transit features are the only ones with a
+// `lines` property); every other category keeps its per-type colour. White dots
+// get a dark stroke so they read on the light basemap too.
+const circleColorExpression = [
+  'case', ['has', 'lines'], '#ffffff', typeColorExpression,
+] as unknown as maplibregl.ExpressionSpecification
+const circleStrokeExpression = [
+  'case', ['has', 'lines'], '#1a1a2e', '#ffffff',
 ] as unknown as maplibregl.ExpressionSpecification
 
 // MapLibre's heatmap-radius is in screen pixels. To pin it to a fixed ground
@@ -286,6 +301,26 @@ function addCustomLayers(map: MlMap, theme: Theme) {
     firstSymbolId,
   )
 
+  // Transit-line route geometry (Transit view only). Coloured per line from the
+  // baked `color` property; inserted below labels but above the distance-field /
+  // heatmap so the lines read over the overlay, and below the dots. Starts empty;
+  // the data effect pushes the geometry only on the Transit view.
+  map.addSource('transit-lines', { type: 'geojson', data: EMPTY_FC })
+  map.addLayer(
+    {
+      id: 'transit-lines-layer',
+      type: 'line',
+      source: 'transit-lines',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 13, 3, 16, 5],
+        'line-opacity': 0.9,
+      },
+    },
+    firstSymbolId,
+  )
+
   map.addSource('stores', {
     type: 'geojson',
     data: EMPTY_FC,
@@ -299,7 +334,7 @@ function addCustomLayers(map: MlMap, theme: Theme) {
     type: 'circle',
     source: 'stores',
     paint: {
-      'circle-color': typeColorExpression,
+      'circle-color': circleColorExpression,
       // Major transit hubs (`major` flag) render at double radius; everything
       // else at the base size. The flag is a boolean baked on load.
       'circle-radius': [
@@ -309,7 +344,7 @@ function addCustomLayers(map: MlMap, theme: Theme) {
         16, ['case', ['==', ['get', 'major'], true], 14, 7],
       ],
       'circle-stroke-width': 2,
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': circleStrokeExpression,
     },
   })
 
@@ -386,9 +421,11 @@ export default function MapView({
   lang,
   theme,
   heatOpacity,
+  showHeatmap,
   minDistance,
   maxDistance,
   boundary,
+  transitLines,
   treePoints,
   treeRadiusM,
   activeSpecies,
@@ -579,6 +616,15 @@ export default function MapView({
     source?.setData((stores ?? EMPTY_FC) as FeatureCollection)
   }, [stores, styleEpoch])
 
+  // Transit-line geometry: push it on the Transit view; null (any other view)
+  // clears the source so the coloured lines disappear.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || styleEpoch === 0) return
+    const source = map.getSource('transit-lines') as maplibregl.GeoJSONSource | undefined
+    source?.setData((transitLines ?? EMPTY_FC) as FeatureCollection)
+  }, [transitLines, styleEpoch])
+
   // Recompute the distance-field overlay when filters or ramp bounds change.
   // Only ramp-slider drags are debounced (they fire continuously and now only
   // trigger a cheap recolor of the cached grid); city/filter/boundary changes
@@ -592,7 +638,9 @@ export default function MapView({
   }>({ stores: undefined, city: undefined, boundary: undefined, epoch: 0 })
   useEffect(() => {
     const map = mapRef.current
-    if (!map || styleEpoch === 0 || boundary === undefined) return
+    // Skip the (expensive) field compute while the heatmap is toggled off; it
+    // recomputes when the toggle flips back on (showHeatmap is a dep).
+    if (!map || styleEpoch === 0 || boundary === undefined || !showHeatmap) return
 
     const prev = overlayDepsRef.current
     // A styleEpoch bump (theme switch) must render immediately — the re-added
@@ -621,7 +669,7 @@ export default function MapView({
       return () => window.clearTimeout(timer)
     }
     render()
-  }, [stores, city, minDistance, maxDistance, boundary, styleEpoch])
+  }, [stores, city, minDistance, maxDistance, boundary, showHeatmap, styleEpoch])
 
   // Boundary outline
   useEffect(() => {
@@ -677,15 +725,16 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current
     if (!map || styleEpoch === 0) return
+    // Distance field shows only on a places view AND when the heatmap toggle is on.
     if (map.getLayer('distance-field-layer'))
-      map.setLayoutProperty('distance-field-layer', 'visibility', isDensity ? 'none' : 'visible')
+      map.setLayoutProperty('distance-field-layer', 'visibility', !isDensity && showHeatmap ? 'visible' : 'none')
     if (map.getLayer('tree-park-labels'))
       map.setLayoutProperty('tree-park-labels', 'visibility', isDensity ? 'visible' : 'none')
     // Park/garden green highlight: only on the Trees view AND when toggled on.
     const overlayVis = isDensity && parkOverlay ? 'visible' : 'none'
     for (const id of ['tree-park-overlay-land', 'tree-park-overlay-park'])
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', overlayVis)
-  }, [isDensity, parkOverlay, styleEpoch])
+  }, [isDensity, parkOverlay, showHeatmap, styleEpoch])
 
   // Tree heatmap spread: convert the metres slider to a ground-metres radius
   // ramp at the city-centre latitude (sub-pixel at city zoom, sharpens as you

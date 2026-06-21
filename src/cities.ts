@@ -23,6 +23,9 @@ export interface CityDef {
    *  tree point-cloud (currently Paris); a missing source hides that category. */
   storesFiles: Partial<Record<DataSourceId, string>>
   boundaryFile: string
+  /** Optional rail-line route geometry (LineStrings coloured per line), drawn
+   *  under the dots on the Transit view. Only cities that ship it (Paris). */
+  transitLinesFile?: string
   /** When true, the data is a one-off snapshot not on the weekly refresh; the
    *  panel shows a freshness disclaimer (Paris is the maintained city). */
   staleData?: boolean
@@ -45,6 +48,7 @@ export const CITIES: CityDef[] = [
       trees: 'data/places/paris/trees.geojson',
     },
     boundaryFile: 'data/boundaries/paris.geojson',
+    transitLinesFile: 'data/places/paris/transit-lines.geojson',
   },
   {
     id: 'nyc',
