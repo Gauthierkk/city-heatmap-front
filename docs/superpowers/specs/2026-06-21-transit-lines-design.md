@@ -1,4 +1,4 @@
-# Transit lines — authentic per-line bullets
+# Transit lines - authentic per-line bullets
 
 **Date:** 2026-06-21
 **Repos:** `city-heatmap-data` (worker) + `city-heatmap-front` (app)
@@ -8,7 +8,7 @@
 
 On the Transit category, show the **actual transit lines** each station serves,
 using the **official IDFM/RATP line pictograms** (colour + symbol). At **major
-stations**, show only the **RER and Metro** lines — drop the mainline Transilien
+stations**, show only the **RER and Metro** lines - drop the mainline Transilien
 (`TRAIN`) lines.
 
 ## Data source
@@ -16,11 +16,11 @@ stations**, show only the **RER and Metro** lines — drop the mainline Transili
 IDF Mobilités `emplacement-des-gares-idf` (already the transit provider's source).
 Per station×line row it carries:
 
-- `indice_lig` — line designation (`1`, `14`, `A`, `D`, `T3a`)
-- `mode` — `METRO` | `RER` | `TRAIN` | `TRAMWAY`/`TRAM` | `VAL`
-- `picto` — official SVG pictogram (`{ filename: "METRO_1.svg", url: <files API> }`)
+- `indice_lig` - line designation (`1`, `14`, `A`, `D`, `T3a`)
+- `mode` - `METRO` | `RER` | `TRAIN` | `TRAMWAY`/`TRAM` | `VAL`
+- `picto` - official SVG pictogram (`{ filename: "METRO_1.svg", url: <files API> }`)
 
-Confirmed example — Gare de Lyon rows: `METRO 1`, `METRO 14`, `RER A`, `RER D`,
+Confirmed example - Gare de Lyon rows: `METRO 1`, `METRO 14`, `RER A`, `RER D`,
 `TRAIN R`. Under the major-station rule it keeps M1/M14/RER A/RER D and drops the
 Transilien R.
 
@@ -39,14 +39,14 @@ Transilien R.
 4. Order lines: `metro` → `rer` → `tram` → `train` → `val`, then by designation
    (numeric for metro, then `Nbis`; alpha otherwise).
 5. Emit `properties.lines = [{ mode, line, picto }]` **in addition to** the
-   existing `categories`/`major`/`id`/`name` (all unchanged — `lines` is additive,
+   existing `categories`/`major`/`id`/`name` (all unchanged - `lines` is additive,
    so dot colour, the mode filter and counts are untouched).
 
 The mode→category mapping and `_categories(...)` stay as-is. Regenerate
 `transit.geojson` (`fetch-transit paris`) and copy into the front repo by hand
 (`data/places/paris/transit.geojson`), per the cross-repo rule.
 
-`_COORD_DP`, clip, guards, drop-guard — unchanged.
+`_COORD_DP`, clip, guards, drop-guard - unchanged.
 
 ## Assets (`city-heatmap-front`)
 
@@ -64,8 +64,8 @@ fetches them from the dataset's `picto.url`; only the committed SVGs ship.
   properties, so `lines` passes through untouched.
 - A reusable line-bullet renderer in two forms (same markup, same `${BASE_URL}lines/${picto}`
   src, ~18px square, `alt`/`title` = e.g. "Metro 1"):
-  - `lineBulletsHtml(lines)` — HTML string for the MapView popup.
-  - `<LineBullets lines={…} />` — React, for `ResultsPanel`.
+  - `lineBulletsHtml(lines)` - HTML string for the MapView popup.
+  - `<LineBullets lines={…} />` - React, for `ResultsPanel`.
 - **Popup** (`MapView.tsx`): for a transit station (has `lines`), the bullet row
   **replaces** the mode badges. Title stays the station name. Non-transit popups
   unchanged.
@@ -74,7 +74,7 @@ fetches them from the dataset's `picto.url`; only the committed SVGs ship.
 
 ## Out of scope / unchanged
 
-- Filtering stays by **mode** (metro/rer/tram/train/val) — not per line.
+- Filtering stays by **mode** (metro/rer/tram/train/val) - not per line.
 - Map **dots** stay coloured by primary mode.
 - Only transit features carry `lines`; grocery/specialty/fitness/pharmacy/trees
   are untouched.
@@ -85,7 +85,7 @@ fetches them from the dataset's `picto.url`; only the committed SVGs ship.
   has a `train` line, spot-check Gare de Lyon = {M1, M14, RER A, RER D}.
 - Front: `tsc --noEmit && vite build`; `public/lines/*.svg` present in `dist`;
   preview serves a sample picto (200) and `transit.geojson` carries `lines`.
-- Visual: dev server — open a transit station popup and the closest-stations list.
+- Visual: dev server - open a transit station popup and the closest-stations list.
 
 ## Implementation order
 

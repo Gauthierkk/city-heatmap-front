@@ -525,7 +525,7 @@ body,
   color: #555;
 }
 
-/* Transit line bullets — official IDFM pictograms in the results list + popup */
+/* Transit line bullets - official IDFM pictograms in the results list + popup */
 .line-bullets {
   flex: none;
   display: inline-flex;

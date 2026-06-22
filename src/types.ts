@@ -1,5 +1,5 @@
 /** Postal address carried per store (decision: addresses baked into the data
- *  by the city-heatmap-data worker). All parts are optional — coverage is
+ *  by the city-heatmap-data worker). All parts are optional - coverage is
  *  partial and varies by city. */
 export interface StoreAddress {
   housenumber?: string
@@ -29,7 +29,7 @@ export interface StoreProperties {
    *  official line bullets in the popup and the closest-stations list. At major
    *  stations this is metro + RER only (mainline trains dropped upstream). */
   lines?: TransitLine[]
-  /** Transit only: a major hub (Paris gare) — rendered as a double-size dot,
+  /** Transit only: a major hub (Paris gare) - rendered as a double-size dot,
    *  not a filterable mode. Derived on load from the `major_station` tag. */
   major?: boolean
 }
@@ -57,7 +57,7 @@ export interface RankedStore {
 }
 
 /** Basemap theme. Seeded once from `prefers-color-scheme` at startup (not
- *  live-tracked), never persisted — consistent with the no-storage stance. */
+ *  live-tracked), never persisted - consistent with the no-storage stance. */
 export type Theme = 'light' | 'dark'
 
 /** OS-derived default basemap theme; read once at startup, not live-tracked. */

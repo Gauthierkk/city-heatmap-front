@@ -24,7 +24,7 @@ import { HEAT_CUTOFF_M, HEAT_MIN_M, HEAT_RAMP_MAX_M, detectTheme } from './types
 
 export default function App() {
   // City is fixed to Paris (NYC/Austin are deprecated; the selector is disabled),
-  // so the id is seeded once and never changes — no setter.
+  // so the id is seeded once and never changes - no setter.
   const [cityId] = useState(DEFAULT_CITY.id)
   const [categoryId, setCategoryId] = useState<CategoryId>(DEFAULT_CATEGORY.id)
   const [lang, setLang] = useState<Lang>(detectLang)
@@ -211,7 +211,7 @@ export default function App() {
     setFocusedStoreId(null)
     setLoadError(null)
     setSpeciesSel(null)
-    // user / address intentionally kept — results re-rank to the new category
+    // user / address intentionally kept - results re-rank to the new category
   }
 
   // Stable identities so memoised panel children don't re-render on slider drags.
@@ -233,7 +233,7 @@ export default function App() {
     }
   }, [stores, activeTags])
 
-  // Count of features in the loaded file that belong to the active category —
+  // Count of features in the loaded file that belong to the active category -
   // used for the hint so Grocery doesn't show the full food-file count.
   const categoryTagSet = useMemo(() => new Set(tagsForCategory(categoryId)), [categoryId])
   const categoryTotal = useMemo(() => {
@@ -243,7 +243,7 @@ export default function App() {
     ).length
   }, [stores, categoryTagSet])
 
-  // Categories offered for this city — only those with a data file. Memoised so
+  // Categories offered for this city - only those with a data file. Memoised so
   // the title <select> doesn't allocate a fresh array on every render.
   const availableCategories = useMemo(
     () => CATEGORIES.filter((c) => city.storesFiles[c.source]),
@@ -321,7 +321,7 @@ export default function App() {
             {titleSegments(lang).map((seg, i) => {
               if (seg.kind === 'text') return <span key={i}>{seg.value}</span>
               if (seg.slot === 'city') {
-                // City selection is disabled — the app is Paris-only (NYC/Austin
+                // City selection is disabled - the app is Paris-only (NYC/Austin
                 // are deprecated), so the city renders as static heading text.
                 return (
                   <span key="city" className="city-static">

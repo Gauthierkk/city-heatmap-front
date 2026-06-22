@@ -1,10 +1,10 @@
-# Paris Grocery Store Heatmap — PRD
+# Paris Grocery Store Heatmap - PRD
 
 **Version:** v0.1
 **Date:** June 2026
 **Status:** Draft
 
-> **Note to model:** This document is your build spec. Anything marked with `>` is a directive to you. For every open question, either ask the user for their preference or propose what you think is best with a brief rationale — never leave them unanswered silently.
+> **Note to model:** This document is your build spec. Anything marked with `>` is a directive to you. For every open question, either ask the user for their preference or propose what you think is best with a brief rationale - never leave them unanswered silently.
 
 ---
 
@@ -63,20 +63,20 @@ A web application that displays grocery stores across Paris on an interactive ma
 
 ### 4.3 Store Data
 - **Source:** OpenStreetMap via Overpass API or pre-baked GeoJSON
-- OSM data is ODbL licensed — map must include OSM attribution
+- OSM data is ODbL licensed - map must include OSM attribution
 - Store types to include (OSM tags):
-  - `shop=supermarket` — Supermarkets (Monoprix, Carrefour, Franprix, etc.)
-  - `shop=convenience` — Convenience stores (Spar, G20, etc.)
-  - `shop=greengrocer` — Fruit & vegetable shops
-  - `shop=butcher` — Butchers
-  - `shop=fishmonger` — Fishmongers
-  - `shop=bakery` — Bakeries
-  - `shop=deli` — Delicatessens / charcuteries
-  - `shop=cheese` — Fromageries
-  - `shop=organic` — Bio / organic stores (Naturalia, Bio c' Bon, etc.)
-  - `shop=frozen_food` — Frozen food stores (Picard)
-  - `shop=alcohol` — Wine shops / cavistes
-  - `shop=beverages` — Drink shops
+  - `shop=supermarket` - Supermarkets (Monoprix, Carrefour, Franprix, etc.)
+  - `shop=convenience` - Convenience stores (Spar, G20, etc.)
+  - `shop=greengrocer` - Fruit & vegetable shops
+  - `shop=butcher` - Butchers
+  - `shop=fishmonger` - Fishmongers
+  - `shop=bakery` - Bakeries
+  - `shop=deli` - Delicatessens / charcuteries
+  - `shop=cheese` - Fromageries
+  - `shop=organic` - Bio / organic stores (Naturalia, Bio c' Bon, etc.)
+  - `shop=frozen_food` - Frozen food stores (Picard)
+  - `shop=alcohol` - Wine shops / cavistes
+  - `shop=beverages` - Drink shops
 - Stores rendered as map markers, styled by type
 - Marker clustering at low zoom levels
 - Click on marker: popup with store name, type, and straight-line distance from user address
@@ -84,7 +84,7 @@ A web application that displays grocery stores across Paris on an interactive ma
 > Ask the user: should we fetch store data live from Overpass at runtime (always fresh, slower) or pre-download a Paris GeoJSON extract and bundle it (fast, needs periodic refresh)? Recommend what you think is best.
 
 ### 4.4 Heatmap Overlay
-- **Logic:** proximity-based only — the heatmap reflects distance from the user's pin, not store density
+- **Logic:** proximity-based only - the heatmap reflects distance from the user's pin, not store density
 - Each store contributes a heat point; intensity = `1 / distance_in_metres` (closer = hotter)
 - Stores beyond a maximum radius contribute zero intensity (cutoff TBD)
 - Color scale: cool (blue) = far → warm (red) = close

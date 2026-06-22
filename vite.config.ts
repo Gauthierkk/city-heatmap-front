@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react'
 // The store GeoJSON lives in ./data (outside public/) so the sibling
 // city-heatmap-data worker can own the whole directory. Vite doesn't serve it
 // by default, so this plugin maps /data/* to ./data in dev and copies it into
-// the build output — keeping every `data/...` URL (cities.ts, index.html)
+// the build output - keeping every `data/...` URL (cities.ts, index.html)
 // unchanged.
 function serveData(): Plugin {
   const dataDir = fileURLToPath(new URL('./data', import.meta.url))

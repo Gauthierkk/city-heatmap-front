@@ -28,7 +28,7 @@ export interface StoreTypeDef {
 }
 
 // Top-level categories. Grocery and Specialty both read the food GeoJSON;
-// Fitness reads its own per-city file — all three are 'places' (dots +
+// Fitness reads its own per-city file - all three are 'places' (dots +
 // distance overlay). Trees is a 'density' category: an unlabelled point cloud
 // rendered only as a heatmap, and only offered for cities that ship a trees
 // file (currently Paris).
@@ -52,7 +52,7 @@ export function categoryById(id: string): CategoryDef {
 // 18 food types + 6 fitness types. Food display order groups related trades
 // (bakery↔pastry, wine↔alcohol). The original 12 were NYC-shaped; pastry,
 // wine, chocolate, confectionery, tea, coffee were added from Overpass counts
-// across Paris / NYC / Austin — all have ≥30 stores in at least one city.
+// across Paris / NYC / Austin - all have ≥30 stores in at least one city.
 // Grocery = the 5 everyday staples; Specialty = the other 13 (incl. bakery).
 export const STORE_TYPES: StoreTypeDef[] = [
   { tag: 'supermarket',   label: { en: 'Supermarket',          fr: 'Supermarché' },          color: '#e74c3c', category: 'grocery'   },
@@ -73,7 +73,7 @@ export const STORE_TYPES: StoreTypeDef[] = [
   { tag: 'confectionery', label: { en: 'Confectionery',        fr: 'Confiserie' },           color: '#f8c8d4', category: 'specialty' },
   { tag: 'tea',           label: { en: 'Tea shop',             fr: 'Thé' },                  color: '#a8d8a8', category: 'specialty' },
   { tag: 'coffee',        label: { en: 'Coffee roaster',       fr: 'Torréfacteur' },         color: '#4a235a', category: 'specialty' },
-  // Fitness types — reuse the `shop` property key so MapView/distanceField
+  // Fitness types - reuse the `shop` property key so MapView/distanceField
   // need no changes. Overpass counts (Paris/NYC/Austin) all meet the ≥30 bar.
   { tag: 'gym',           label: { en: 'Gym & fitness',        fr: 'Salle de sport' },       color: '#c0392b', category: 'fitness'   },
   { tag: 'yoga',          label: { en: 'Yoga',                 fr: 'Yoga' },                 color: '#27ae60', category: 'fitness'   },
@@ -81,7 +81,7 @@ export const STORE_TYPES: StoreTypeDef[] = [
   { tag: 'martial_arts',  label: { en: 'Martial arts & boxing', fr: 'Arts martiaux & boxe' }, color: '#2c3e50', category: 'fitness'   },
   { tag: 'dance',         label: { en: 'Dance',                fr: 'Danse' },                color: '#e84393', category: 'fitness'   },
   { tag: 'climbing',      label: { en: 'Climbing',             fr: 'Escalade' },             color: '#16a085', category: 'fitness'   },
-  // Transit modes — like fitness, reuse the `shop` key. Stations carry a
+  // Transit modes - like fitness, reuse the `shop` key. Stations carry a
   // `categories[]` array; the loader collapses it to one primary `shop` via
   // TRANSIT_PRIORITY (see primaryTransitType) so the single-type model holds.
   { tag: 'metro',         label: { en: 'Metro',                fr: 'Métro' },                color: '#2c5fb3', category: 'transit'   },
@@ -89,13 +89,13 @@ export const STORE_TYPES: StoreTypeDef[] = [
   { tag: 'tram',          label: { en: 'Tram',                 fr: 'Tramway' },              color: '#1f9e5a', category: 'transit'   },
   { tag: 'train',         label: { en: 'Train',                fr: 'Train' },                color: '#6a3d9a', category: 'transit'   },
   { tag: 'val',           label: { en: 'VAL',                  fr: 'VAL' },                  color: '#e08e0b', category: 'transit'   },
-  // Pharmacy — a single-type category (the Paris register has no sub-types), so
+  // Pharmacy - a single-type category (the Paris register has no sub-types), so
   // its FilterBar shows one pill. Reuses the `shop` key like fitness/transit.
   // Green echoes the French pharmacy cross.
   { tag: 'pharmacy',      label: { en: 'Pharmacy',             fr: 'Pharmacie' },            color: '#16a34a', category: 'pharmacy'  },
 ]
 
-// Precomputed per-category arrays — referentially stable so FilterBar's
+// Precomputed per-category arrays - referentially stable so FilterBar's
 // React.memo works correctly when these are passed as the `types` prop.
 const _typesByCategory = new Map<CategoryId, StoreTypeDef[]>()
 const _tagsByCategory = new Map<CategoryId, string[]>()
@@ -126,7 +126,7 @@ export function typeColor(tag: string): string {
 // Transit stations carry a `categories[]` array (a station can be metro + RER
 // + train). To slot them into the same single-`shop` model as shops, collapse
 // the array to one primary mode: the most "headline" mode wins. `major_station`
-// is NOT a mode — it's a size flag (see MAJOR_STATION_TAG) and is excluded.
+// is NOT a mode - it's a size flag (see MAJOR_STATION_TAG) and is excluded.
 export const MAJOR_STATION_TAG = 'major_station'
 const TRANSIT_PRIORITY = ['train', 'rer', 'val', 'tram', 'metro']
 

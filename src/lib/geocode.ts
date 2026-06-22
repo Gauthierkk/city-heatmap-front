@@ -9,7 +9,7 @@ export interface GeocodeResult {
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search'
 
 // Nominatim usage policy: max 1 req/s, no heavy autocomplete. Callers must
-// debounce (see AddressSearch) — this module only builds the request.
+// debounce (see AddressSearch) - this module only builds the request.
 export async function searchCityAddress(
   city: CityDef,
   query: string,

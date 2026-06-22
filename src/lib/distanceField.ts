@@ -86,7 +86,7 @@ interface DistanceGrid {
 // FeatureCollection (new identity) whenever stores or active filters change.
 let gridCache: { stores: StoreCollection; bounds: CityBounds; grid: DistanceGrid } | null = null
 
-// One reusable scratch canvas for the colorize+clip+encode pass — recreating it
+// One reusable scratch canvas for the colorize+clip+encode pass - recreating it
 // on every ramp-slider drag is wasteful. `getContext` keeps the same context;
 // putImageData overwrites the full rect each render, so no clear is needed.
 let scratchCanvas: HTMLCanvasElement | null = null
@@ -152,7 +152,7 @@ function computeGrid(stores: StoreCollection, bounds: CityBounds): DistanceGrid 
 
         for (let by = byMin; by <= byMax; by++) {
           for (let bx = bxMin; bx <= bxMax; bx++) {
-            // Skip interior cells of this ring — only border
+            // Skip interior cells of this ring - only border
             if (ring > 0 && by > byMin && by < byMax && bx > bxMin && bx < bxMax) continue
             const bucket = buckets[by * bCols + bx]
             for (let k = 0; k < bucket.length; k += 2) {

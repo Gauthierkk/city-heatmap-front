@@ -21,7 +21,7 @@ interface Props {
   lang: Lang
   theme: Theme
   heatOpacity: number
-  /** Distance overlay on/off — hides the distance-field raster when false. */
+  /** Distance overlay on/off - hides the distance-field raster when false. */
   showHeatmap: boolean
   /** Ramp: cells at/below this distance (m) are full red */
   minDistance: number
@@ -57,7 +57,7 @@ const lngLatBounds = (b: CityBounds): [[number, number], [number, number]] => [
   [b.maxLng, b.maxLat],
 ]
 
-// Padding (px) used for every bbox fit — initial framing, re-fit on resize, and
+// Padding (px) used for every bbox fit - initial framing, re-fit on resize, and
 // the reset-to-city fly when the address is cleared.
 const FIT_OPTS = { padding: 20 }
 
@@ -192,7 +192,7 @@ function popupHtml(
 }
 
 // Tree species popup (density category): just the species name plus a small
-// green "Tree" badge — trees carry no address or distance-to-you. Empty species
+// green "Tree" badge - trees carry no address or distance-to-you. Empty species
 // (some trees have no recorded species) fall back to a localized label.
 function treePopupHtml(species: string | null | undefined, lang: Lang): string {
   const name = species && species.trim() ? species : t(lang, 'unknownSpecies')
@@ -208,8 +208,8 @@ const BLANK_PNG =
 // style.load handler re-runs this against the fresh style. Guarded against
 // double-adds (style.load can coincide with the initial load).
 // The distance-field raster and boundary line are inserted below the
-// basemap's first symbol layer — resolved per style, since Liberty's first
-// symbol layer differs from Fiord's — so street/place labels stay readable
+// basemap's first symbol layer - resolved per style, since Liberty's first
+// symbol layer differs from Fiord's - so street/place labels stay readable
 // above the heatmap. Store dots are added last (topmost, above labels).
 // Sources start empty/blank; the data effects (keyed on styleEpoch) re-push
 // the current overlay PNG, boundary and store data right after.
@@ -236,7 +236,7 @@ function addCustomLayers(map: MlMap, theme: Theme) {
 
   // Tree density heatmap (density categories). A FeatureCollection of Point
   // features, each contributing to the density; green ramp, no labels/dots.
-  // Inserted below labels and starts hidden — the data effect toggles it.
+  // Inserted below labels and starts hidden - the data effect toggles it.
   map.addSource('trees', { type: 'geojson', data: EMPTY_FC })
   map.addLayer(
     {
@@ -285,7 +285,7 @@ function addCustomLayers(map: MlMap, theme: Theme) {
   )
 
   // Thin outline so the overlay's clip edge reads as
-  // intentional — kept topmost of the below-label layers to cover the seam.
+  // intentional - kept topmost of the below-label layers to cover the seam.
   map.addSource('boundary', { type: 'geojson', data: EMPTY_FC })
   map.addLayer(
     {
@@ -353,7 +353,7 @@ function addCustomLayers(map: MlMap, theme: Theme) {
   })
 
   // Optional park / garden green highlight (Trees view, off by default). Two
-  // fill layers over the basemap's green polygons — the dedicated `park` layer
+  // fill layers over the basemap's green polygons - the dedicated `park` layer
   // plus `landcover` grass/wood (Paris gardens like the Luxembourg are stored as
   // `grass`, the Bois as `wood`, not `park`). Translucent so streets/labels show
   // through. Inserted below `trees-heat` so tree density still reads on top.
@@ -384,8 +384,8 @@ function addCustomLayers(map: MlMap, theme: Theme) {
   )
 
   // Park / garden name labels (Trees density view only). The basemap park/garden
-  // polygons carry no names — those names live in the `poi` source-layer as
-  // points — and the dark Fiord style ships no POI labels at all. So this
+  // polygons carry no names - those names live in the `poi` source-layer as
+  // points - and the dark Fiord style ships no POI labels at all. So this
   // text-only layer surfaces them: filtered to the park/garden POI classes,
   // collision-thinned (lowest `rank` wins, so the big parks label first and more
   // appear as you zoom). Added last so it yields to the basemap's own labels.
@@ -457,7 +457,7 @@ export default function MapView({
   langRef.current = lang
   themeRef.current = theme
 
-  // Open a single popup at a time — replacing any previous one — so clicks and
+  // Open a single popup at a time - replacing any previous one - so clicks and
   // results-panel selections don't accumulate stacked popups.
   const showPopup = (map: MlMap, lng: number, lat: number, html: string) => {
     popupRef.current?.remove()
@@ -577,7 +577,7 @@ export default function MapView({
 
   // City framing + navigation clip: contain-fit the whole city, lock max
   // zoom-out to exactly that view (minZoom = fitted zoom), and use the
-  // fitted viewport itself as maxBounds — at min zoom the viewport equals
+  // fitted viewport itself as maxBounds - at min zoom the viewport equals
   // maxBounds, so panning is clamped on both axes; zoomed in, the user can
   // pan anywhere within that min-zoom view but never beyond it. The framing
   // depends on viewport aspect, so it is re-applied on map resize too.
@@ -647,8 +647,8 @@ export default function MapView({
     if (!map || styleEpoch === 0 || boundary === undefined || !showHeatmap) return
 
     const prev = overlayDepsRef.current
-    // A styleEpoch bump (theme switch) must render immediately — the re-added
-    // source holds BLANK_PNG — so it is never treated as a ramp-only change.
+    // A styleEpoch bump (theme switch) must render immediately - the re-added
+    // source holds BLANK_PNG - so it is never treated as a ramp-only change.
     const onlyRamp =
       prev.stores === stores &&
       prev.city === city &&
@@ -695,7 +695,7 @@ export default function MapView({
     if (!map || styleEpoch === 0) return
     const source = map.getSource('trees') as maplibregl.GeoJSONSource | undefined
     if (!source) return
-    // treePoints is already a FeatureCollection of Points — a heatmap source
+    // treePoints is already a FeatureCollection of Points - a heatmap source
     // reads it directly (each feature contributes one point to the density).
     source.setData(treePoints ?? EMPTY_FC)
     const visibility = treePoints ? 'visible' : 'none'
@@ -722,7 +722,7 @@ export default function MapView({
 
   // Density-mode layer visibility. The distance field is a places-only proximity
   // overlay (on a density page there are no stores, so it would render a solid
-  // blue raster) — hide it in density mode so the basemap shows through. The
+  // blue raster) - hide it in density mode so the basemap shows through. The
   // park/garden name labels are the inverse: shown only on the Trees view. Keyed
   // on styleEpoch so both re-apply after a theme switch re-adds the layers at
   // their default visibility.
@@ -742,7 +742,7 @@ export default function MapView({
 
   // Tree heatmap spread: convert the metres slider to a ground-metres radius
   // ramp at the city-centre latitude (sub-pixel at city zoom, sharpens as you
-  // zoom in). Cheap GPU paint update — no debounce.
+  // zoom in). Cheap GPU paint update - no debounce.
   useEffect(() => {
     const map = mapRef.current
     if (!map || styleEpoch === 0 || !map.getLayer('trees-heat')) return
@@ -760,7 +760,7 @@ export default function MapView({
     userMarkerRef.current?.remove()
     userMarkerRef.current = null
     if (user) {
-      // Warm orange (was #1a1a2e dark navy, invisible on Fiord) — reads on
+      // Warm orange (was #1a1a2e dark navy, invisible on Fiord) - reads on
       // both the dark Fiord and light Liberty basemaps, so not theme-keyed.
       userMarkerRef.current = new Marker({ color: '#e06020', scale: 1.1 })
         .setLngLat([user.lng, user.lat])

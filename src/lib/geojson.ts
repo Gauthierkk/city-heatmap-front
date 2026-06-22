@@ -5,7 +5,7 @@ import type { StoreCollection, StoreProperties, TransitLine } from '../types'
 // Pure data-shaping helpers for the GeoJSON the app loads. Kept out of the
 // components (App/MapView) so they stay small and these stay trivially testable.
 
-/** True when two tag sets are equal — lets callers no-op identical filter
+/** True when two tag sets are equal - lets callers no-op identical filter
  *  updates (e.g. "Select all" when everything is already active) so memoised
  *  derived state doesn't needlessly recompute. */
 export function sameTagSet(a: Set<string>, b: Set<string>): boolean {
@@ -38,7 +38,7 @@ export function parseCategories(value: unknown): string[] | null {
   return null
 }
 
-// Transit `lines` array — same MapLibre-stringification dance as parseCategories,
+// Transit `lines` array - same MapLibre-stringification dance as parseCategories,
 // but each element is a {mode, line, picto} object.
 export function parseLines(value: unknown): TransitLine[] | null {
   if (Array.isArray(value)) return value as TransitLine[]
@@ -55,7 +55,7 @@ export function parseLines(value: unknown): TransitLine[] | null {
 
 // Transit stations ship a `categories[]` array instead of a single `shop`
 // tag. On load, derive a primary `shop` so they flow through the same
-// single-type machinery as shops, and split out `major_station` — it's a size
+// single-type machinery as shops, and split out `major_station` - it's a size
 // flag (`major`), not a mode, so it's dropped from the modes used as tags.
 // No-op for files that already carry `shop` (food/fitness).
 export function withShopTags(data: StoreCollection): StoreCollection {
@@ -93,7 +93,7 @@ export function extractBoundary(data: unknown): Polygon | MultiPolygon | null {
 // carrying its species (species_fr / species_en) so every coordinate is bound to
 // a name and the heatmap / species filter consume one shape. Three on-disk forms
 // are accepted: the compact `trees-columnar-v1` payload (a species lookup table +
-// parallel coordinate / index arrays — the worker's current output), a plain
+// parallel coordinate / index arrays - the worker's current output), a plain
 // FeatureCollection, and a legacy bare MultiPoint. Returns null if the payload
 // holds no usable points.
 export function extractTreePoints(data: unknown): FeatureCollection<Point> | null {
@@ -106,7 +106,7 @@ export function extractTreePoints(data: unknown): FeatureCollection<Point> | nul
   } | null
 
   // Columnar format: a frequency-sorted species table indexed per point. Expand
-  // into Point features, resolving each species from the table — the assigned
+  // into Point features, resolving each species from the table - the assigned
   // strings are the table's own references, so no per-point string copies.
   if (obj?.format === 'trees-columnar-v1') {
     const { species, coordinates, speciesIndex } = obj as unknown as {

@@ -1,4 +1,4 @@
-// Hand-rolled i18n (no dependency — bundle size matters). Two locales; the
+// Hand-rolled i18n (no dependency - bundle size matters). Two locales; the
 // language lives in App state (default from the browser), is never persisted,
 // and is passed down as a `lang` prop. `t()` does {slot} interpolation.
 
@@ -32,7 +32,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     opacity: 'Opacity: {n}%',
     hint: 'Enter your address to see your closest places ({n} loaded).',
     dataDisclaimer: 'Heads up: {city} data is a one-off snapshot and isn’t refreshed regularly.',
-    treesHint: 'Tree density across {city} — darker green means more trees nearby. Approximate, unlabelled data.',
+    treesHint: 'Tree density across {city} - darker green means more trees nearby. Approximate, unlabelled data.',
     treeRadius: 'Tree spread: {n} m',
     highlightParks: 'Highlight parks & gardens',
     tree: 'Tree',
@@ -46,7 +46,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     searchAria: '{city} address',
     clearAddress: 'Clear address',
     searching: 'Searching…',
-    noResults: 'No {city} address found — the search only covers {city}.',
+    noResults: 'No {city} address found - the search only covers {city}.',
     searchFailed: 'Address lookup failed, please try again.',
     selectAll: 'Select all',
     clearAll: 'Clear all',
@@ -74,7 +74,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     opacity: 'Opacité : {n} %',
     hint: 'Saisissez votre adresse pour voir les établissements les plus proches ({n} chargés).',
     dataDisclaimer: 'À noter : les données de {city} sont un instantané ponctuel et ne sont pas mises à jour régulièrement.',
-    treesHint: 'Densité des arbres à {city} — plus le vert est foncé, plus il y a d’arbres. Données approximatives, sans étiquette.',
+    treesHint: 'Densité des arbres à {city} - plus le vert est foncé, plus il y a d’arbres. Données approximatives, sans étiquette.',
     treeRadius: 'Étendue des arbres : {n} m',
     highlightParks: 'Surligner parcs et jardins',
     tree: 'Arbre',
@@ -88,7 +88,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     searchAria: 'Adresse à {city}',
     clearAddress: "Effacer l'adresse",
     searching: 'Recherche…',
-    noResults: 'Aucune adresse trouvée à {city} — la recherche couvre uniquement {city}.',
+    noResults: 'Aucune adresse trouvée à {city} - la recherche couvre uniquement {city}.',
     searchFailed: "La recherche d'adresse a échoué, veuillez réessayer.",
     selectAll: 'Tout sélectionner',
     clearAll: 'Tout effacer',

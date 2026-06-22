@@ -3,7 +3,7 @@ import type { Lang } from '../i18n'
 import { locale, t } from '../i18n'
 
 export interface SpeciesEntry {
-  /** Stable key — the English species name (empty string = unknown species). */
+  /** Stable key - the English species name (empty string = unknown species). */
   key: string
   /** Display label in the active language. */
   label: string
@@ -22,13 +22,13 @@ interface Props {
 // Collapsible multi-select for the Trees density category. Sorted by frequency
 // (most common first), text-searchable, with select-all / clear-all. Filtering
 // is applied to the heatmap via a MapLibre layer filter (see MapView), so this
-// only owns the selection set — it never touches the point cloud.
+// only owns the selection set - it never touches the point cloud.
 function SpeciesFilter({ species, active, lang, onChange }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
 
   const allKeys = useMemo(() => species.map((s) => s.key), [species])
-  // null means "uninitialised" — render as everything checked.
+  // null means "uninitialised" - render as everything checked.
   const isChecked = (key: string) => (active ? active.has(key) : true)
   const selectedCount = active ? active.size : species.length
 
